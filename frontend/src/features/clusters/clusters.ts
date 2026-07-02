@@ -14,3 +14,11 @@ export function clusterQuery(id: string) {
     staleTime: 30 * 1000,
   });
 }
+
+export function scansQuery(clusterId: string) {
+  return queryOptions({
+    queryKey: ["clusters", clusterId, "scans"],
+    queryFn: () => api.listScans(clusterId),
+    staleTime: 15 * 1000,
+  });
+}

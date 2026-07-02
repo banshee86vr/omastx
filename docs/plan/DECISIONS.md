@@ -79,3 +79,40 @@ per-IP login rate limit. We removed it; `clientIP` uses the real TCP peer
 throttles brute force in aggregate while the per-email limit stays precise — and neither
 is spoofable. If a future deployment needs true client IPs, resolve them from a trusted
 proxy explicitly rather than re-enabling RealIP.
+
+## D11: Scan orchestration, latest_cache shape, single-instance scan guard
+
+The scan orchestrator (`internal/scan`) is provider/resolver-agnostic per SPEC §2.2/§8:
+`DefaultProviders()` / `DefaultResolvers()` wire the concrete image provider + OCI
+resolver, and the orchestrator only iterates the interface slices — M4's Helm provider
+plugs in without touching it. Discovery runs all providers in parallel; resolution runs a
+bounded worker pool (default 6).
+
+`latest_cache.candidates` stores the **raw registry tag listing** for an identity, not a
+pre-selected "latest". The expensive, rate-limited registry call is what we cache; the
+per-installed-tag channel selection (`drift.SelectLatest`) is cheap and recomputed each
+time, so different installed tags of the same image share one upstream fetch and the
+artifact-detail candidate list is derived on read. Cache freshness is computed in SQL
+(`resolved_at + ttl > now()`).
+
+"Only one concurrent scan per cluster" (SPEC §2.4) is enforced by an in-memory guard in
+the `Manager` (single backend instance — the compose/Helm topology runs one backend
+replica). A future multi-replica deployment would need a DB advisory lock; noted, not
+built.
+
+A forward-only migration (`00002_cluster_context.sql`) adds `clusters.context` so the
+scanner can rebuild exactly the imported context (D8: one context per cluster). The
+decrypted kubeconfig lives only in memory during a scan and its plaintext buffer is zeroed
+once the client is built; it is never logged or returned by any API.
+
+## D12: OCI resolver — anonymous, per-host rate limit, 6h TTL; artifact pagination
+
+The OCI resolver lists tags anonymously via `go-containerregistry` with the ambient docker
+keychain (no credentials stored in v1; private-registry creds are M6/settings). A global
+per-registry-host token-bucket limiter (default 5 req/s, burst 5) throttles anonymous
+pulls (Docker Hub's anonymous quota is real, SPEC §2.2). `latest_cache` TTL defaults to 6h.
+
+`GET /api/artifacts` uses offset-based cursor pagination (`cursor` = row offset, page size
+100, fetch N+1 to detect a next page) with the fixed SPEC-default sort `drift_score` desc,
+then identity. Keyset pagination and user-selectable sort are deferred; the offset cursor
+is sufficient for single-team fleet sizes and keeps the query simple.

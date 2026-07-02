@@ -73,6 +73,9 @@ export function AppFrame() {
           <Link to="/" className={styles.navLink}>
             Fleet
           </Link>
+          <Link to="/artifacts" className={styles.navLink}>
+            Artifacts
+          </Link>
         </div>
 
         {auth && (

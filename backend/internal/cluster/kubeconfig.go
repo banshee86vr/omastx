@@ -6,7 +6,9 @@ package cluster
 import (
 	"fmt"
 	"sort"
+	"time"
 
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -63,6 +65,9 @@ func RESTConfig(kubeconfig []byte, contextName string) (*rest.Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	if contextName == "" {
+		contextName = raw.CurrentContext
+	}
 	if _, ok := raw.Contexts[contextName]; !ok {
 		return nil, fmt.Errorf("context %q not found in kubeconfig", contextName)
 	}
@@ -71,4 +76,17 @@ func RESTConfig(kubeconfig []byte, contextName string) (*rest.Config, error) {
 		return nil, fmt.Errorf("build client config for context %q: %w", contextName, err)
 	}
 	return restCfg, nil
+}
+
+// Clientset builds a read-only clientset for one context of a kubeconfig, bounded
+// by timeout. An empty contextName uses the kubeconfig's current-context.
+func Clientset(kubeconfig []byte, contextName string, timeout time.Duration) (kubernetes.Interface, error) {
+	restCfg, err := RESTConfig(kubeconfig, contextName)
+	if err != nil {
+		return nil, err
+	}
+	if timeout > 0 {
+		restCfg.Timeout = timeout
+	}
+	return kubernetes.NewForConfig(restCfg)
 }

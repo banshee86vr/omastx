@@ -11,7 +11,15 @@ import { SignInPage } from "./features/auth/SignInPage.tsx";
 import { FleetPage } from "./features/fleet/FleetPage.tsx";
 import { ConnectClusterPage } from "./features/clusters/ConnectClusterPage.tsx";
 import { ClusterDetailPage } from "./features/clusters/ClusterDetailPage.tsx";
+import { ArtifactsPage } from "./features/artifacts/ArtifactsPage.tsx";
+import { driftClassSchema, type DriftClass } from "./lib/api.ts";
 import { meQuery } from "./features/auth/auth.ts";
+
+export interface ArtifactsSearch {
+  cluster?: string | undefined;
+  class?: DriftClass | undefined;
+  q?: string | undefined;
+}
 
 interface RouterContext {
   queryClient: QueryClient;
@@ -59,9 +67,28 @@ const clusterDetailRoute = createRoute({
   component: ClusterDetailPage,
 });
 
+const artifactsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/artifacts",
+  validateSearch: (search: Record<string, unknown>): ArtifactsSearch => {
+    const cls = driftClassSchema.safeParse(search.class);
+    return {
+      cluster: typeof search.cluster === "string" ? search.cluster : undefined,
+      class: cls.success ? cls.data : undefined,
+      q: typeof search.q === "string" ? search.q : undefined,
+    };
+  },
+  component: ArtifactsPage,
+});
+
 const routeTree = rootRoute.addChildren([
   signInRoute,
-  authedRoute.addChildren([fleetRoute, connectClusterRoute, clusterDetailRoute]),
+  authedRoute.addChildren([
+    fleetRoute,
+    connectClusterRoute,
+    clusterDetailRoute,
+    artifactsRoute,
+  ]),
 ]);
 
 export function makeRouter(queryClient: QueryClient) {

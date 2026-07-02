@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -182,6 +183,7 @@ func (s *Server) handleCreateCluster(w http.ResponseWriter, r *http.Request) {
 	row, err := s.store.CreateCluster(r.Context(), db.CreateClusterParams{
 		Name:            req.Name,
 		ApiServerUrl:    result.Server,
+		Context:         req.Context,
 		KubeconfigEnc:   encrypted,
 		KubeconfigNonce: nonce,
 		RbacReport:      rbacJSON,
@@ -198,8 +200,20 @@ func (s *Server) handleCreateCluster(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, err)
 		return
 	}
+	s.reloadSchedules(r.Context())
 	writeJSON(w, http.StatusCreated, toClusterDTO(row.ID, row.Name, row.ApiServerUrl,
 		row.Status, row.ScheduleCron, row.CreatedAt, row.LastScanAt, row.RbacReport))
+}
+
+// reloadSchedules refreshes the scan scheduler after clusters change. Failures are
+// logged, not fatal — the next successful reload (or restart) picks up the change.
+func (s *Server) reloadSchedules(ctx context.Context) {
+	if s.scheduler == nil {
+		return
+	}
+	if err := s.scheduler.Reload(ctx); err != nil {
+		s.logger.Error("reload scan schedules", "error", err)
+	}
 }
 
 func (s *Server) handleListClusters(w http.ResponseWriter, r *http.Request) {
@@ -248,6 +262,7 @@ func (s *Server) handleDeleteCluster(w http.ResponseWriter, r *http.Request) {
 		writeClusterNotFound(w)
 		return
 	}
+	s.reloadSchedules(r.Context())
 	w.WriteHeader(http.StatusNoContent)
 }
 

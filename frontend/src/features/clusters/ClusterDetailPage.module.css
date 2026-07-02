@@ -49,6 +49,27 @@
   font-size: var(--text-lg);
 }
 
+.scanMessage {
+  font-size: var(--text-sm);
+  color: var(--mist);
+  font-family: var(--font-mono);
+}
+
+.scanRow {
+  cursor: pointer;
+}
+
+.scanRow:focus-visible {
+  outline: 2px solid var(--beacon);
+  outline-offset: -2px;
+}
+
+.scanAction {
+  color: var(--beacon);
+  text-align: right;
+  white-space: nowrap;
+}
+
 .notice {
   border: 1px solid color-mix(in srgb, var(--caution) 45%, transparent);
   border-radius: var(--radius);

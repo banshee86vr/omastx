@@ -137,6 +137,81 @@ export type Cluster = z.infer<typeof clusterSchema>;
 const inspectResponseSchema = z.object({ contexts: z.array(contextInfoSchema) });
 const clustersResponseSchema = z.object({ clusters: z.array(clusterSchema) });
 
+export const driftClassSchema = z.enum([
+  "current",
+  "patch",
+  "minor",
+  "major",
+  "deprecated",
+  "unknown",
+]);
+export type DriftClass = z.infer<typeof driftClassSchema>;
+
+export const artifactSchema = z.object({
+  id: z.string(),
+  cluster_id: z.string(),
+  cluster_name: z.string(),
+  kind: z.string(),
+  namespace: z.string(),
+  owner_kind: z.string(),
+  owner_name: z.string(),
+  identity: z.string(),
+  installed: z.string(),
+  latest: z.string().nullable(),
+  drift_class: driftClassSchema,
+  drift_score: z.number(),
+  releases_behind: z.number().nullable(),
+  last_seen: z.string(),
+});
+export type Artifact = z.infer<typeof artifactSchema>;
+
+export const artifactDetailSchema = artifactSchema.extend({
+  source_meta: z.record(z.string(), z.unknown()).nullable().optional(),
+  candidates: z.array(z.string()),
+  first_seen: z.string(),
+});
+export type ArtifactDetail = z.infer<typeof artifactDetailSchema>;
+
+const artifactsResponseSchema = z.object({
+  artifacts: z.array(artifactSchema),
+  next_cursor: z.number().nullable(),
+});
+export type ArtifactsPage = z.infer<typeof artifactsResponseSchema>;
+
+export const scanStatsSchema = z.object({
+  total: z.number(),
+  current: z.number(),
+  patch: z.number(),
+  minor: z.number(),
+  major: z.number(),
+  deprecated: z.number(),
+  unknown: z.number(),
+  errors: z.number(),
+});
+export type ScanStats = z.infer<typeof scanStatsSchema>;
+
+export const scanSchema = z.object({
+  id: z.string(),
+  cluster_id: z.string(),
+  started_at: z.string(),
+  finished_at: z.string().nullable(),
+  status: z.string(),
+  error: z.string().nullable(),
+  stats: scanStatsSchema.nullable(),
+});
+export type Scan = z.infer<typeof scanSchema>;
+
+const scansResponseSchema = z.object({ scans: z.array(scanSchema) });
+
+export interface ArtifactFilters {
+  cluster?: string | undefined;
+  kind?: string | undefined;
+  namespace?: string | undefined;
+  class?: DriftClass | undefined;
+  q?: string | undefined;
+  cursor?: number | undefined;
+}
+
 export interface CreateClusterInput {
   name: string;
   kubeconfig: string;
@@ -181,4 +256,31 @@ export const api = {
   deleteCluster(id: string): Promise<void> {
     return request(`/api/clusters/${id}`, null, { method: "DELETE" });
   },
+  startScan(clusterId: string): Promise<{ scan_id: string }> {
+    return request(`/api/clusters/${clusterId}/scan`, z.object({ scan_id: z.string() }), {
+      method: "POST",
+    });
+  },
+  listScans(clusterId: string): Promise<Scan[]> {
+    return request(`/api/clusters/${clusterId}/scans`, scansResponseSchema).then((r) => r.scans);
+  },
+  listArtifacts(filters: ArtifactFilters = {}): Promise<ArtifactsPage> {
+    const params = new URLSearchParams();
+    if (filters.cluster) params.set("cluster", filters.cluster);
+    if (filters.kind) params.set("kind", filters.kind);
+    if (filters.namespace) params.set("namespace", filters.namespace);
+    if (filters.class) params.set("class", filters.class);
+    if (filters.q) params.set("q", filters.q);
+    if (filters.cursor) params.set("cursor", String(filters.cursor));
+    const qs = params.toString();
+    return request(`/api/artifacts${qs ? `?${qs}` : ""}`, artifactsResponseSchema);
+  },
+  getArtifact(id: string): Promise<ArtifactDetail> {
+    return request(`/api/artifacts/${id}`, artifactDetailSchema);
+  },
 };
+
+/** scanEventsUrl builds the SSE endpoint for a running scan's progress stream. */
+export function scanEventsUrl(clusterId: string, scanId: string): string {
+  return `/api/clusters/${clusterId}/scans/${scanId}/events`;
+}

@@ -131,6 +131,29 @@ func (f *fakeStore) DeleteCluster(_ context.Context, id uuid.UUID) (int64, error
 	return 1, nil
 }
 
+// ArtifactStore methods: the M1/M2 unit tests don't exercise scans/artifacts, so
+// these are minimal (empty results). The scan flow is covered by the integration
+// test against dockerized Postgres.
+func (f *fakeStore) GetScan(_ context.Context, _ uuid.UUID) (db.Scan, error) {
+	return db.Scan{}, pgx.ErrNoRows
+}
+
+func (f *fakeStore) ListScansByCluster(_ context.Context, _ db.ListScansByClusterParams) ([]db.Scan, error) {
+	return nil, nil
+}
+
+func (f *fakeStore) ListArtifacts(_ context.Context, _ db.ListArtifactsParams) ([]db.ListArtifactsRow, error) {
+	return nil, nil
+}
+
+func (f *fakeStore) GetArtifact(_ context.Context, _ uuid.UUID) (db.GetArtifactRow, error) {
+	return db.GetArtifactRow{}, pgx.ErrNoRows
+}
+
+func (f *fakeStore) GetLatestCache(_ context.Context, _ db.GetLatestCacheParams) (db.GetLatestCacheRow, error) {
+	return db.GetLatestCacheRow{}, pgx.ErrNoRows
+}
+
 var testMasterKey = bytes.Repeat([]byte{7}, 32)
 
 func newTestServer(store Store) http.Handler {

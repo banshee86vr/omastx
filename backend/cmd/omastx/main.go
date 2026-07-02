@@ -18,6 +18,7 @@ import (
 	"github.com/banshee86vr/omastx/backend/internal/api"
 	"github.com/banshee86vr/omastx/backend/internal/cluster"
 	"github.com/banshee86vr/omastx/backend/internal/config"
+	"github.com/banshee86vr/omastx/backend/internal/scan"
 	"github.com/banshee86vr/omastx/backend/internal/store"
 	"github.com/banshee86vr/omastx/backend/internal/store/db"
 )
@@ -61,10 +62,25 @@ func run(logger *slog.Logger, migrateOnly bool) error {
 		return err
 	}
 
+	scanner := scan.NewManager(scan.Config{
+		Store:     queries,
+		Providers: scan.DefaultProviders(),
+		Resolvers: scan.DefaultResolvers(queries, 0),
+		Logger:    logger,
+		MasterKey: cfg.MasterKey,
+	})
+	scheduler := scan.NewScheduler(scanner, queries, logger)
+	if err := scheduler.Reload(ctx); err != nil {
+		logger.Warn("initial schedule load failed", "error", err)
+	}
+	defer scheduler.Stop()
+
 	apiServer := api.NewServer(queries, logger, api.Options{
 		SecureCookies: cfg.SecureCookies,
 		MasterKey:     cfg.MasterKey,
 		Connector:     &cluster.KubeConnector{},
+		Scanner:       scanner,
+		Scheduler:     scheduler,
 	})
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,

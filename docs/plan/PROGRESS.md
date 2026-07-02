@@ -6,12 +6,14 @@
 
 ## Current state
 
-- **Active milestone**: M3 — Scan/images ([M3-scan-images.md](M3-scan-images.md))
-- **Status**: not started (M2 completed 2026-07-02)
-- **Last completed task**: M2 fully verified, including end-to-end against a real kind
-  cluster. One M1 item remains open: confirming the release workflow pushes to ghcr.io
-  on the first push to GitHub.
-- **Next task**: first unchecked item in [M3-scan-images.md](M3-scan-images.md)
+- **Active milestone**: M4 — Helm ([M4-helm.md](M4-helm.md))
+- **Status**: not started (M3 completed 2026-07-02)
+- **Last completed task**: M3 fully implemented and verified — image discovery, OCI
+  resolver, drift engine (96.8% coverage), scan orchestrator + SSE + scheduler, artifact
+  ledger + detail Sheet + cluster scan controls. Verified end to end in the compose stack
+  (screenshots). One M1 item remains open: confirming the release workflow pushes to
+  ghcr.io on the first push to GitHub.
+- **Next task**: first unchecked item in [M4-helm.md](M4-helm.md)
 
 ## Milestone status
 
@@ -19,7 +21,7 @@
 |-----------|------|--------|
 | M1 Skeleton | [M1-skeleton.md](M1-skeleton.md) | done (ghcr.io push pending first GitHub push) |
 | M2 Clusters | [M2-clusters.md](M2-clusters.md) | done |
-| M3 Scan/images | [M3-scan-images.md](M3-scan-images.md) | not started |
+| M3 Scan/images | [M3-scan-images.md](M3-scan-images.md) | done |
 | M4 Helm | [M4-helm.md](M4-helm.md) | not started |
 | M5 Signature UI | [M5-signature-ui.md](M5-signature-ui.md) | not started |
 | M6 Polish | [M6-polish.md](M6-polish.md) | not started |
@@ -34,6 +36,8 @@
 
 | Date | Session summary |
 |------|-----------------|
+| 2026-07-02 | M3 UX fix: the cluster-detail "Recent scans" rows were inert. Completed scans are now clickable (keyboard-accessible, `role=link` + focus ring + "View artifacts →" affordance) and open the artifact ledger pre-filtered to that cluster. Added `validateSearch` to the `/artifacts` route (cluster/class/q, class parsed via the zod drift-class schema) and seeded `ArtifactsPage` filters from the URL. Gate: no backend change; typecheck/eslint/vite build clean; navigation-only so no new tests warranted and no new security surface (cluster id already user-visible + auth-gated); verified in the compose stack (screenshots). |
+| 2026-07-02 | Implemented all of M3 (scan/images). Backend: `internal/core` (exact §2.2 `ArtifactProvider`/`VersionResolver` + `ClusterClient`/`Artifact`/`Latest`), `internal/drift` (channel-aware tag selection + drift class/score, 96.8% cover), `internal/providers/image` (workload discovery incl. init/ephemeral, identity normalization), `internal/resolvers/oci` (go-containerregistry listing, per-host rate limiter, latest_cache TTL), `internal/scan` (orchestrator: parallel discover → pooled resolve → snapshot persist; SSE `Hub`; cron `Scheduler`). New queries (scans/artifacts/observations/latest_cache) + migration `00002` adding `clusters.context`. API: `POST /clusters/{id}/scan`, SSE events, `GET /clusters/{id}/scans`, `GET /artifacts` (filters + offset cursor, drift_score-desc sort), `GET /artifacts/{id}` (candidates derived from cache). Frontend: `/artifacts` ledger (mono table, filter chips, installed→latest arrows, drift tags), artifact detail Sheet, cluster-detail Scan now + live SSE progress + scan history. Decisions D11 (orchestration/cache/guard/context) + D12 (resolver anon + rate limit + pagination). Gate: tests green (scan flow integration vs dockerized PG), `go vet`/gofmt/tsc/eslint/build clean, security reviewed (SSE auth, no cred/kubeconfig leakage, read-only k8s), verified visually in the compose stack. |
 | 2026-07-02 | Implemented all of M2 (connect flow): AES-256-GCM crypto pkg, cluster pkg (kubeconfig parse, connection test, RBAC self-check via SelfSubjectAccessReview), clusters API (inspect/check/create/list/get/delete) with per-context multi-import (D8), login rate limiting, connect flow UI (drag-and-drop + paste, context multi-select, permission matrix, name+schedule), Manifest rail cluster list, cluster detail with remove. Go bumped to 1.26 for client-go v0.36 (D9). Gate outcome + verification record in M2-clusters.md — verified end to end against a real kind cluster. |
 | 2026-07-02 | Created planning scaffolding (this folder, .cursor/rules). Implemented and verified all of M1: Go backend (chi + pgx + sqlc + goose, session auth with CSRF, admin bootstrap), React frontend (tokens, 9 ui primitives, sign-in, app frame, empty fleet page), docker-compose stack, Helm chart, CI + release workflows. Verification record in M1-skeleton.md. go.mod pinned to go 1.25 (matches golang:1.25-alpine build image). |
 | 2026-07-02 | Palette override per owner request (DECISIONS D7): dark grey base + neon yellow `#e3ff2f` accent in `tokens.css`; day theme accent darkened to chartreuse-olive `#5c6b00`. Gate outcome: no code-level tests warranted (CSS values only — verified instead with a WCAG contrast script, all 13 fg/bg pairs ≥ 4.5:1, both themes); no security surface touched; best practices clean (deviation from SPEC §4.2 documented in D7 + "Known deviations", token names/roles unchanged, frontend rebuilt and screenshot-verified in the compose stack). |

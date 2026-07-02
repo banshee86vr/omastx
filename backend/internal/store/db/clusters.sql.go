@@ -14,14 +14,15 @@ import (
 
 const createCluster = `-- name: CreateCluster :one
 
-INSERT INTO clusters (name, api_server_url, kubeconfig_enc, kubeconfig_nonce, rbac_report, schedule_cron, status)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO clusters (name, api_server_url, context, kubeconfig_enc, kubeconfig_nonce, rbac_report, schedule_cron, status)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING id, name, api_server_url, rbac_report, schedule_cron, created_at, last_scan_at, status
 `
 
 type CreateClusterParams struct {
 	Name            string `json:"name"`
 	ApiServerUrl    string `json:"api_server_url"`
+	Context         string `json:"context"`
 	KubeconfigEnc   []byte `json:"kubeconfig_enc"`
 	KubeconfigNonce []byte `json:"kubeconfig_nonce"`
 	RbacReport      []byte `json:"rbac_report"`
@@ -46,6 +47,7 @@ func (q *Queries) CreateCluster(ctx context.Context, arg CreateClusterParams) (C
 	row := q.db.QueryRow(ctx, createCluster,
 		arg.Name,
 		arg.ApiServerUrl,
+		arg.Context,
 		arg.KubeconfigEnc,
 		arg.KubeconfigNonce,
 		arg.RbacReport,
@@ -111,6 +113,39 @@ func (q *Queries) GetCluster(ctx context.Context, id uuid.UUID) (GetClusterRow, 
 	return i, err
 }
 
+const getClusterConnection = `-- name: GetClusterConnection :one
+SELECT id, name, context, kubeconfig_enc, kubeconfig_nonce, rbac_report, schedule_cron
+FROM clusters
+WHERE id = $1
+`
+
+type GetClusterConnectionRow struct {
+	ID              uuid.UUID `json:"id"`
+	Name            string    `json:"name"`
+	Context         string    `json:"context"`
+	KubeconfigEnc   []byte    `json:"kubeconfig_enc"`
+	KubeconfigNonce []byte    `json:"kubeconfig_nonce"`
+	RbacReport      []byte    `json:"rbac_report"`
+	ScheduleCron    string    `json:"schedule_cron"`
+}
+
+// GetClusterConnection returns everything the scanner needs to reach a cluster.
+// The encrypted kubeconfig never leaves the backend (SPEC §2.6).
+func (q *Queries) GetClusterConnection(ctx context.Context, id uuid.UUID) (GetClusterConnectionRow, error) {
+	row := q.db.QueryRow(ctx, getClusterConnection, id)
+	var i GetClusterConnectionRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Context,
+		&i.KubeconfigEnc,
+		&i.KubeconfigNonce,
+		&i.RbacReport,
+		&i.ScheduleCron,
+	)
+	return i, err
+}
+
 const getClusterKubeconfig = `-- name: GetClusterKubeconfig :one
 SELECT kubeconfig_enc, kubeconfig_nonce
 FROM clusters
@@ -127,6 +162,38 @@ func (q *Queries) GetClusterKubeconfig(ctx context.Context, id uuid.UUID) (GetCl
 	var i GetClusterKubeconfigRow
 	err := row.Scan(&i.KubeconfigEnc, &i.KubeconfigNonce)
 	return i, err
+}
+
+const listClusterSchedules = `-- name: ListClusterSchedules :many
+SELECT id, name, schedule_cron
+FROM clusters
+ORDER BY name
+`
+
+type ListClusterSchedulesRow struct {
+	ID           uuid.UUID `json:"id"`
+	Name         string    `json:"name"`
+	ScheduleCron string    `json:"schedule_cron"`
+}
+
+func (q *Queries) ListClusterSchedules(ctx context.Context) ([]ListClusterSchedulesRow, error) {
+	rows, err := q.db.Query(ctx, listClusterSchedules)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListClusterSchedulesRow
+	for rows.Next() {
+		var i ListClusterSchedulesRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.ScheduleCron); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listClusters = `-- name: ListClusters :many

@@ -34,6 +34,7 @@ type Cluster struct {
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 	LastScanAt      pgtype.Timestamptz `json:"last_scan_at"`
 	Status          string             `json:"status"`
+	Context         string             `json:"context"`
 }
 
 type LatestCache struct {
