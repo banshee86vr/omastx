@@ -70,7 +70,7 @@ func allowAllCheckResult() cluster.CheckResult {
 // signIn returns a request modifier carrying a valid session + CSRF token.
 func signIn(t *testing.T, h http.Handler, store *fakeStore) func(*http.Request) {
 	t.Helper()
-	store.addUser("op@example.com", "secret")
+	store.addUser("op@example.com")
 	login := doJSON(t, h, http.MethodPost, "/api/auth/login", `{"email":"op@example.com","password":"secret"}`, nil)
 	if login.Code != http.StatusOK {
 		t.Fatalf("login: %d %s", login.Code, login.Body)
@@ -278,7 +278,7 @@ func TestClusterEndpointsRequireAuthAndCSRF(t *testing.T) {
 		}
 	})
 	t.Run("mutation without csrf", func(t *testing.T) {
-		store.addUser("op@example.com", "secret")
+		store.addUser("op@example.com")
 		login := doJSON(t, h, http.MethodPost, "/api/auth/login", `{"email":"op@example.com","password":"secret"}`, nil)
 		cookie := findSessionCookie(login)
 		rec := doJSON(t, h, http.MethodPost, "/api/clusters", kubeconfigJSON(`,"name":"x","context":"prod-eu"`),
@@ -291,7 +291,7 @@ func TestClusterEndpointsRequireAuthAndCSRF(t *testing.T) {
 
 func TestLoginRateLimited(t *testing.T) {
 	store := newFakeStore()
-	store.addUser("admin@example.com", "secret")
+	store.addUser("admin@example.com")
 	h := newTestServer(store)
 
 	for range 5 {

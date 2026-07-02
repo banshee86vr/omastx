@@ -60,7 +60,9 @@ func NewServer(store Store, logger *slog.Logger, opts Options) *Server {
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
+	// Deliberately NOT using middleware.RealIP: it trusts X-Forwarded-For /
+	// X-Real-IP, which an attacker could spoof to evade the per-IP login rate
+	// limit (GHSA-9g5q-2w5x-hmxf). We use the real TCP peer via r.RemoteAddr.
 	r.Use(middleware.Recoverer)
 
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {

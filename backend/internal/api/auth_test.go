@@ -38,8 +38,11 @@ func newFakeStore() *fakeStore {
 	}
 }
 
-func (f *fakeStore) addUser(email, password string) db.User {
-	hash, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
+// testPassword is the password all fake users are created with.
+const testPassword = "secret"
+
+func (f *fakeStore) addUser(email string) db.User {
+	hash, _ := bcrypt.GenerateFromPassword([]byte(testPassword), bcrypt.MinCost)
 	u := db.User{ID: uuid.New(), Email: email, PasswordHash: string(hash), Role: "admin"}
 	f.users[email] = u
 	return u
@@ -169,7 +172,7 @@ func TestLogin(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			store := newFakeStore()
-			store.addUser("admin@example.com", "secret")
+			store.addUser("admin@example.com")
 			h := newTestServer(store)
 
 			rec := doJSON(t, h, http.MethodPost, "/api/auth/login", tt.body, nil)
@@ -210,7 +213,7 @@ func TestLogin(t *testing.T) {
 
 func TestMeAndLogout(t *testing.T) {
 	store := newFakeStore()
-	store.addUser("admin@example.com", "secret")
+	store.addUser("admin@example.com")
 	h := newTestServer(store)
 
 	login := doJSON(t, h, http.MethodPost, "/api/auth/login", `{"email":"admin@example.com","password":"secret"}`, nil)
@@ -270,7 +273,7 @@ func TestMeAndLogout(t *testing.T) {
 
 func TestExpiredSessionRejected(t *testing.T) {
 	store := newFakeStore()
-	u := store.addUser("admin@example.com", "secret")
+	u := store.addUser("admin@example.com")
 	token := randomToken()
 	store.sessions[hashToken(token)] = db.GetSessionRow{
 		TokenHash: hashToken(token),

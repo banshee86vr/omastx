@@ -69,3 +69,13 @@ re-runs the check server-side — client results are never trusted.
 `k8s.io/client-go v0.36` requires Go 1.26, so go.mod and `deploy/Dockerfile.backend`
 (`golang:1.26-alpine`) are pinned accordingly. CI uses `go-version-file: backend/go.mod`
 and follows automatically.
+
+## D10: No chi RealIP middleware (rate-limit spoofing)
+
+`middleware.RealIP` is deprecated and trusts `X-Forwarded-For` / `X-Real-IP`
+(GHSA-9g5q-2w5x-hmxf), which would let an attacker forge those headers to evade the
+per-IP login rate limit. We removed it; `clientIP` uses the real TCP peer
+(`r.RemoteAddr`). Behind the bundled nginx that peer is the proxy, so the per-IP limit
+throttles brute force in aggregate while the per-email limit stays precise — and neither
+is spoofable. If a future deployment needs true client IPs, resolve them from a trusted
+proxy explicitly rather than re-enabling RealIP.

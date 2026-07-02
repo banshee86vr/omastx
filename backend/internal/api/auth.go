@@ -215,8 +215,9 @@ func sessionFrom(ctx context.Context) db.GetSessionRow {
 	return sess
 }
 
-// clientIP returns the request IP without the port (chi RealIP middleware has
-// already resolved X-Forwarded-For when trusted).
+// clientIP returns the real TCP peer address without the port. We deliberately
+// do not consult X-Forwarded-For / X-Real-IP here (spoofable), so the per-IP
+// login limit can't be evaded by forging headers.
 func clientIP(r *http.Request) string {
 	host := r.RemoteAddr
 	if i := strings.LastIndex(host, ":"); i > 0 {

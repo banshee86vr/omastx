@@ -48,7 +48,10 @@ by any API. Removing a cluster works. Integration tests cover every mutation (§
   DB row removed afterwards.
 - Gate outcome: security clean (encrypted at rest verified; no kubeconfig in any
   response or log; server-side re-check on create; read-only verbs asserted; 1 MB body
-  cap; CSRF on inspect/check/create/delete). Notes: chi RealIP trusts proxy headers —
-  fine behind the bundled nginx, don't expose the backend port directly; frontend has
-  no unit-test runner yet (UI verified end-to-end; add vitest when the first pure
-  frontend logic lands, e.g. M3 formatters).
+  cap; CSRF on inspect/check/create/delete). Frontend has no unit-test runner yet (UI
+  verified end-to-end; add vitest when the first pure frontend logic lands, e.g. M3
+  formatters).
+- CI lint follow-up (2026-07-02): golangci-lint (v2.12.2) flagged three issues on the
+  first push — unchecked `sqlDB.Close()`, the spoofable `middleware.RealIP` (removed, see
+  DECISIONS D10), and an `unparam` on the test helper. All fixed; local golangci-lint run
+  is clean (0 issues). Removing RealIP resolved the earlier per-IP rate-limit caveat.
