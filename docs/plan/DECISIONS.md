@@ -53,3 +53,19 @@ names and roles (`--abyss`…`--fathom`), single interactive accent (`--beacon`)
 colors for drift semantics only, typography, spacing, 2px radius, and the derived (not
 inverted) light theme, whose accent darkens to chartreuse-olive `#5c6b00` for contrast.
 All pairs verified ≥ 4.5:1. Supersedes the §4.2 hex values wherever they are quoted.
+
+## D8: Connect flow API — inspect/check endpoints and multi-context import
+
+Additive to the SPEC §2.7 API list: `POST /api/clusters/inspect` (parse kubeconfig,
+list contexts — nothing stored) and `POST /api/clusters/check` (connection test + RBAC
+self-check for one context — nothing stored). They exist because the §5.3 flow shows the
+permission matrix *before* saving, and because of the owner requirement (2026-07-02):
+when a kubeconfig holds multiple contexts, the user chooses which ones to import; each
+selected context becomes its own cluster (create is called once per context). Create
+re-runs the check server-side — client results are never trusted.
+
+## D9: Go 1.26 toolchain
+
+`k8s.io/client-go v0.36` requires Go 1.26, so go.mod and `deploy/Dockerfile.backend`
+(`golang:1.26-alpine`) are pinned accordingly. CI uses `go-version-file: backend/go.mod`
+and follows automatically.

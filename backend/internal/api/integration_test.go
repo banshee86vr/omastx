@@ -74,6 +74,52 @@ func TestLoginIntegration(t *testing.T) {
 	if logout.Code != http.StatusNoContent {
 		t.Fatalf("logout: %d %s", logout.Code, logout.Body)
 	}
+
+	t.Run("cluster mutations", func(t *testing.T) {
+		authed := func(r *http.Request) {
+			login := doJSON(t, h, http.MethodPost, "/api/auth/login",
+				`{"email":"it@example.com","password":"integration-pass"}`, nil)
+			var a authResponse
+			if err := json.Unmarshal(login.Body.Bytes(), &a); err != nil {
+				t.Fatal(err)
+			}
+			r.AddCookie(findSessionCookie(login))
+			r.Header.Set(csrfHeader, a.CSRFToken)
+		}
+
+		created := doJSON(t, h, http.MethodPost, "/api/clusters",
+			kubeconfigJSON(`,"name":"it-cluster","context":"prod-eu"`), authed)
+		if created.Code != http.StatusCreated {
+			t.Fatalf("create cluster: %d %s", created.Code, created.Body)
+		}
+		var dto clusterDTO
+		if err := json.Unmarshal(created.Body.Bytes(), &dto); err != nil {
+			t.Fatal(err)
+		}
+
+		// Encrypted at rest: the raw column must not contain the plaintext.
+		var raw []byte
+		if err := pool.QueryRow(ctx,
+			"SELECT kubeconfig_enc FROM clusters WHERE id = $1", dto.ID).Scan(&raw); err != nil {
+			t.Fatalf("read raw kubeconfig column: %v", err)
+		}
+		if strings.Contains(string(raw), "fake-token-1") {
+			t.Error("kubeconfig stored in plaintext in the database")
+		}
+
+		list := doJSON(t, h, http.MethodGet, "/api/clusters", "", authed)
+		if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), "it-cluster") {
+			t.Errorf("list: %d %s", list.Code, list.Body)
+		}
+		if strings.Contains(list.Body.String(), "fake-token-1") {
+			t.Error("list response leaks kubeconfig")
+		}
+
+		deleted := doJSON(t, h, http.MethodDelete, "/api/clusters/"+dto.ID, "", authed)
+		if deleted.Code != http.StatusNoContent {
+			t.Fatalf("delete: %d %s", deleted.Code, deleted.Body)
+		}
+	})
 }
 
 func mustHash(t *testing.T, password string) string {

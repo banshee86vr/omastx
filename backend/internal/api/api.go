@@ -2,21 +2,59 @@
 package api
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/google/uuid"
+
+	"github.com/banshee86vr/omastx/backend/internal/cluster"
+	"github.com/banshee86vr/omastx/backend/internal/store/db"
 )
 
-type Server struct {
-	store         AuthStore
-	logger        *slog.Logger
-	secureCookies bool
+// ClusterStore is the subset of store queries the cluster handlers need.
+type ClusterStore interface {
+	CreateCluster(ctx context.Context, arg db.CreateClusterParams) (db.CreateClusterRow, error)
+	ListClusters(ctx context.Context) ([]db.ListClustersRow, error)
+	GetCluster(ctx context.Context, id uuid.UUID) (db.GetClusterRow, error)
+	DeleteCluster(ctx context.Context, id uuid.UUID) (int64, error)
 }
 
-func NewServer(store AuthStore, logger *slog.Logger, secureCookies bool) *Server {
-	return &Server{store: store, logger: logger, secureCookies: secureCookies}
+// Store is everything the API needs from the database; *db.Queries satisfies it.
+type Store interface {
+	AuthStore
+	ClusterStore
+}
+
+type Options struct {
+	SecureCookies bool
+	// MasterKey encrypts kubeconfigs at rest (32 bytes, SPEC §2.6).
+	MasterKey []byte
+	// Connector performs cluster connectivity + RBAC checks.
+	Connector cluster.Connector
+}
+
+type Server struct {
+	store         Store
+	logger        *slog.Logger
+	secureCookies bool
+	masterKey     []byte
+	connector     cluster.Connector
+	limiter       *loginLimiter
+}
+
+func NewServer(store Store, logger *slog.Logger, opts Options) *Server {
+	return &Server{
+		store:         store,
+		logger:        logger,
+		secureCookies: opts.SecureCookies,
+		masterKey:     opts.MasterKey,
+		connector:     opts.Connector,
+		limiter:       newLoginLimiter(5, 15*time.Minute),
+	}
 }
 
 func (s *Server) Router() http.Handler {
@@ -37,6 +75,15 @@ func (s *Server) Router() http.Handler {
 			r.Use(s.requireAuth, s.requireCSRF)
 			r.Get("/auth/me", s.handleMe)
 			r.Post("/auth/logout", s.handleLogout)
+
+			r.Route("/clusters", func(r chi.Router) {
+				r.Get("/", s.handleListClusters)
+				r.Post("/", s.handleCreateCluster)
+				r.Post("/inspect", s.handleInspectKubeconfig)
+				r.Post("/check", s.handleCheckCluster)
+				r.Get("/{id}", s.handleGetCluster)
+				r.Delete("/{id}", s.handleDeleteCluster)
+			})
 		})
 
 		r.NotFound(func(w http.ResponseWriter, _ *http.Request) {

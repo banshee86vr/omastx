@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -13,21 +14,27 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/banshee86vr/omastx/backend/internal/cluster"
 	"github.com/banshee86vr/omastx/backend/internal/store/db"
 )
 
 type fakeStore struct {
 	users    map[string]db.User          // by email
 	sessions map[string]db.GetSessionRow // by token hash
+	clusters map[uuid.UUID]db.GetClusterRow
+	// lastCreateCluster captures params for encryption assertions.
+	lastCreateCluster *db.CreateClusterParams
 }
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{
 		users:    map[string]db.User{},
 		sessions: map[string]db.GetSessionRow{},
+		clusters: map[uuid.UUID]db.GetClusterRow{},
 	}
 }
 
@@ -77,8 +84,61 @@ func (f *fakeStore) DeleteSession(_ context.Context, tokenHash string) error {
 	return nil
 }
 
-func newTestServer(store AuthStore) http.Handler {
-	return NewServer(store, slog.New(slog.NewTextHandler(io.Discard, nil)), false).Router()
+func (f *fakeStore) CreateCluster(_ context.Context, arg db.CreateClusterParams) (db.CreateClusterRow, error) {
+	for _, c := range f.clusters {
+		if c.Name == arg.Name {
+			return db.CreateClusterRow{}, &pgconn.PgError{Code: "23505"}
+		}
+	}
+	f.lastCreateCluster = &arg
+	row := db.GetClusterRow{
+		ID:           uuid.New(),
+		Name:         arg.Name,
+		ApiServerUrl: arg.ApiServerUrl,
+		RbacReport:   arg.RbacReport,
+		ScheduleCron: arg.ScheduleCron,
+		CreatedAt:    pgtype.Timestamptz{Time: time.Now(), Valid: true},
+		Status:       arg.Status,
+	}
+	f.clusters[row.ID] = row
+	return db.CreateClusterRow(row), nil
+}
+
+func (f *fakeStore) ListClusters(_ context.Context) ([]db.ListClustersRow, error) {
+	rows := make([]db.ListClustersRow, 0, len(f.clusters))
+	for _, c := range f.clusters {
+		rows = append(rows, db.ListClustersRow(c))
+	}
+	return rows, nil
+}
+
+func (f *fakeStore) GetCluster(_ context.Context, id uuid.UUID) (db.GetClusterRow, error) {
+	c, ok := f.clusters[id]
+	if !ok {
+		return db.GetClusterRow{}, pgx.ErrNoRows
+	}
+	return c, nil
+}
+
+func (f *fakeStore) DeleteCluster(_ context.Context, id uuid.UUID) (int64, error) {
+	if _, ok := f.clusters[id]; !ok {
+		return 0, nil
+	}
+	delete(f.clusters, id)
+	return 1, nil
+}
+
+var testMasterKey = bytes.Repeat([]byte{7}, 32)
+
+func newTestServer(store Store) http.Handler {
+	return newTestServerWithConnector(store, &fakeConnector{result: allowAllCheckResult()})
+}
+
+func newTestServerWithConnector(store Store, connector cluster.Connector) http.Handler {
+	return NewServer(store, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{
+		MasterKey: testMasterKey,
+		Connector: connector,
+	}).Router()
 }
 
 func doJSON(t *testing.T, h http.Handler, method, path, body string, mod func(*http.Request)) *httptest.ResponseRecorder {

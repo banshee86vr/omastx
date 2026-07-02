@@ -16,6 +16,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/banshee86vr/omastx/backend/internal/api"
+	"github.com/banshee86vr/omastx/backend/internal/cluster"
 	"github.com/banshee86vr/omastx/backend/internal/config"
 	"github.com/banshee86vr/omastx/backend/internal/store"
 	"github.com/banshee86vr/omastx/backend/internal/store/db"
@@ -60,9 +61,14 @@ func run(logger *slog.Logger, migrateOnly bool) error {
 		return err
 	}
 
+	apiServer := api.NewServer(queries, logger, api.Options{
+		SecureCookies: cfg.SecureCookies,
+		MasterKey:     cfg.MasterKey,
+		Connector:     &cluster.KubeConnector{},
+	})
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,
-		Handler:           api.NewServer(queries, logger, cfg.SecureCookies).Router(),
+		Handler:           apiServer.Router(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

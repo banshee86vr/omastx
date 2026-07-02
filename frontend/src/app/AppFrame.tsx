@@ -2,15 +2,30 @@ import { Link, Outlet, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, setCsrfToken } from "../lib/api.ts";
 import { meQuery } from "../features/auth/auth.ts";
-import { Button, useToast } from "../ui/index.ts";
+import { clustersQuery } from "../features/clusters/clusters.ts";
+import { Button, Flag, useToast, type FlagTone } from "../ui/index.ts";
 import { AmmoniteMark } from "../ui/AmmoniteMark.tsx";
 import styles from "./AppFrame.module.css";
+
+function flagTone(status: string): FlagTone {
+  switch (status) {
+    case "connected":
+      return "current";
+    case "degraded":
+      return "caution";
+    case "error":
+      return "alarm";
+    default:
+      return "unknown";
+  }
+}
 
 export function AppFrame() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toastError } = useToast();
   const { data: auth } = useQuery(meQuery);
+  const { data: clusters } = useQuery(clustersQuery);
 
   async function onSignOut() {
     try {
@@ -33,7 +48,25 @@ export function AppFrame() {
 
         <div className={styles.manifest}>
           <div className={styles.sectionTitle}>Manifest</div>
-          <p className={styles.manifestEmpty}>No clusters yet.</p>
+          {clusters && clusters.length > 0 ? (
+            <div className={styles.manifestList}>
+              {clusters.map((c) => (
+                <Link
+                  key={c.id}
+                  to="/clusters/$clusterId"
+                  params={{ clusterId: c.id }}
+                  className={styles.manifestItem}
+                >
+                  <Flag tone={flagTone(c.status)} label={c.name} />
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <p className={styles.manifestEmpty}>No clusters yet.</p>
+          )}
+          <Link to="/clusters/new" className={styles.connectLink}>
+            + Connect cluster
+          </Link>
         </div>
 
         <div className={styles.nav}>

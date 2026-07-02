@@ -9,6 +9,8 @@ import {
 import { AppFrame } from "./app/AppFrame.tsx";
 import { SignInPage } from "./features/auth/SignInPage.tsx";
 import { FleetPage } from "./features/fleet/FleetPage.tsx";
+import { ConnectClusterPage } from "./features/clusters/ConnectClusterPage.tsx";
+import { ClusterDetailPage } from "./features/clusters/ClusterDetailPage.tsx";
 import { meQuery } from "./features/auth/auth.ts";
 
 interface RouterContext {
@@ -45,7 +47,22 @@ const fleetRoute = createRoute({
   component: FleetPage,
 });
 
-const routeTree = rootRoute.addChildren([signInRoute, authedRoute.addChildren([fleetRoute])]);
+const connectClusterRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/clusters/new",
+  component: ConnectClusterPage,
+});
+
+const clusterDetailRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/clusters/$clusterId",
+  component: ClusterDetailPage,
+});
+
+const routeTree = rootRoute.addChildren([
+  signInRoute,
+  authedRoute.addChildren([fleetRoute, connectClusterRoute, clusterDetailRoute]),
+]);
 
 export function makeRouter(queryClient: QueryClient) {
   return createRouter({

@@ -6,19 +6,19 @@
 
 ## Current state
 
-- **Active milestone**: M2 — Clusters ([M2-clusters.md](M2-clusters.md))
-- **Status**: not started (M1 completed 2026-07-02)
-- **Last completed task**: M1 fully verified end to end (compose stack, auth flow, Helm
-  chart render, CI/release workflows). One M1 item remains open: confirming the release
-  workflow pushes to ghcr.io on the first push to GitHub.
-- **Next task**: first unchecked item in [M2-clusters.md](M2-clusters.md)
+- **Active milestone**: M3 — Scan/images ([M3-scan-images.md](M3-scan-images.md))
+- **Status**: not started (M2 completed 2026-07-02)
+- **Last completed task**: M2 fully verified, including end-to-end against a real kind
+  cluster. One M1 item remains open: confirming the release workflow pushes to ghcr.io
+  on the first push to GitHub.
+- **Next task**: first unchecked item in [M3-scan-images.md](M3-scan-images.md)
 
 ## Milestone status
 
 | Milestone | File | Status |
 |-----------|------|--------|
 | M1 Skeleton | [M1-skeleton.md](M1-skeleton.md) | done (ghcr.io push pending first GitHub push) |
-| M2 Clusters | [M2-clusters.md](M2-clusters.md) | not started |
+| M2 Clusters | [M2-clusters.md](M2-clusters.md) | done |
 | M3 Scan/images | [M3-scan-images.md](M3-scan-images.md) | not started |
 | M4 Helm | [M4-helm.md](M4-helm.md) | not started |
 | M5 Signature UI | [M5-signature-ui.md](M5-signature-ui.md) | not started |
@@ -34,6 +34,7 @@
 
 | Date | Session summary |
 |------|-----------------|
+| 2026-07-02 | Implemented all of M2 (connect flow): AES-256-GCM crypto pkg, cluster pkg (kubeconfig parse, connection test, RBAC self-check via SelfSubjectAccessReview), clusters API (inspect/check/create/list/get/delete) with per-context multi-import (D8), login rate limiting, connect flow UI (drag-and-drop + paste, context multi-select, permission matrix, name+schedule), Manifest rail cluster list, cluster detail with remove. Go bumped to 1.26 for client-go v0.36 (D9). Gate outcome + verification record in M2-clusters.md — verified end to end against a real kind cluster. |
 | 2026-07-02 | Created planning scaffolding (this folder, .cursor/rules). Implemented and verified all of M1: Go backend (chi + pgx + sqlc + goose, session auth with CSRF, admin bootstrap), React frontend (tokens, 9 ui primitives, sign-in, app frame, empty fleet page), docker-compose stack, Helm chart, CI + release workflows. Verification record in M1-skeleton.md. go.mod pinned to go 1.25 (matches golang:1.25-alpine build image). |
 | 2026-07-02 | Palette override per owner request (DECISIONS D7): dark grey base + neon yellow `#e3ff2f` accent in `tokens.css`; day theme accent darkened to chartreuse-olive `#5c6b00`. Gate outcome: no code-level tests warranted (CSS values only — verified instead with a WCAG contrast script, all 13 fg/bg pairs ≥ 4.5:1, both themes); no security surface touched; best practices clean (deviation from SPEC §4.2 documented in D7 + "Known deviations", token names/roles unchanged, frontend rebuilt and screenshot-verified in the compose stack). |
 | 2026-07-02 | Adopted the non-negotiable post-implementation gate (tests / security / best-practices review after every implementation) — codified in `.cursor/rules/omastx-workflow.mdc` and every milestone wrap-up. Applied it retroactively to M1: added table-driven tests for master-key/config parsing; security review found the frontend image ran nginx as root — switched to `nginxinc/nginx-unprivileged` (uid 101) and added pod/container securityContext hardening to the chart's frontend deployment; best-practices review otherwise clean (session tokens stored hashed, bcrypt timing mitigation, constant-time CSRF compare, forward-only migrations, distroless nonroot backend). Known deferred hardening: login rate limiting (target M2). |

@@ -87,6 +87,63 @@ async function request<T>(
   return schema.parse(await res.json());
 }
 
+export const contextInfoSchema = z.object({
+  name: z.string(),
+  cluster: z.string(),
+  server: z.string(),
+  user: z.string(),
+  current: z.boolean(),
+});
+
+export const permissionSchema = z.object({
+  group: z.string(),
+  resource: z.string(),
+  verb: z.string(),
+  allowed: z.boolean(),
+});
+
+export const rbacReportSchema = z.object({
+  permissions: z.array(permissionSchema).nullable().default([]),
+  images_ok: z.boolean(),
+  helm_ok: z.boolean(),
+  checked_at: z.string(),
+});
+
+export const checkResultSchema = z.object({
+  server: z.string(),
+  reachable: z.boolean(),
+  version: z.string().optional(),
+  error: z.string().optional(),
+  rbac: rbacReportSchema,
+});
+
+export const clusterSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  server: z.string(),
+  status: z.string(),
+  schedule_cron: z.string(),
+  created_at: z.string(),
+  last_scan_at: z.string().nullable(),
+  rbac: rbacReportSchema.nullable(),
+});
+
+export type ContextInfo = z.infer<typeof contextInfoSchema>;
+export type Permission = z.infer<typeof permissionSchema>;
+export type RBACReport = z.infer<typeof rbacReportSchema>;
+export type CheckResult = z.infer<typeof checkResultSchema>;
+export type Cluster = z.infer<typeof clusterSchema>;
+
+const inspectResponseSchema = z.object({ contexts: z.array(contextInfoSchema) });
+const clustersResponseSchema = z.object({ clusters: z.array(clusterSchema) });
+
+export interface CreateClusterInput {
+  name: string;
+  kubeconfig: string;
+  context: string;
+  schedule_cron?: string;
+}
+
 export const api = {
   login(email: string, password: string): Promise<AuthResponse> {
     return request("/api/auth/login", authResponseSchema, {
@@ -99,5 +156,29 @@ export const api = {
   },
   me(): Promise<AuthResponse> {
     return request("/api/auth/me", authResponseSchema);
+  },
+  inspectKubeconfig(kubeconfig: string): Promise<ContextInfo[]> {
+    return request("/api/clusters/inspect", inspectResponseSchema, {
+      method: "POST",
+      body: { kubeconfig },
+    }).then((r) => r.contexts);
+  },
+  checkCluster(kubeconfig: string, context: string): Promise<CheckResult> {
+    return request("/api/clusters/check", checkResultSchema, {
+      method: "POST",
+      body: { kubeconfig, context },
+    });
+  },
+  createCluster(input: CreateClusterInput): Promise<Cluster> {
+    return request("/api/clusters", clusterSchema, { method: "POST", body: input });
+  },
+  listClusters(): Promise<Cluster[]> {
+    return request("/api/clusters", clustersResponseSchema).then((r) => r.clusters);
+  },
+  getCluster(id: string): Promise<Cluster> {
+    return request(`/api/clusters/${id}`, clusterSchema);
+  },
+  deleteCluster(id: string): Promise<void> {
+    return request(`/api/clusters/${id}`, null, { method: "DELETE" });
   },
 };

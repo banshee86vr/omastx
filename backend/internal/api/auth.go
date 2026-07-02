@@ -76,22 +76,41 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			"Send a JSON body with email and password, then try again.")
 		return
 	}
+	email := strings.ToLower(strings.TrimSpace(req.Email))
 
-	user, err := s.store.GetUserByEmail(r.Context(), strings.ToLower(strings.TrimSpace(req.Email)))
+	// Throttle repeated failures per email and per client IP.
+	limitKeys := []string{"email:" + email, "ip:" + clientIP(r)}
+	for _, key := range limitKeys {
+		if s.limiter.blocked(key) {
+			writeProblem(w, http.StatusTooManyRequests, "too_many_attempts", "Too many sign-in attempts",
+				"Sign-in is temporarily blocked after repeated failures. Wait a few minutes, then try again.")
+			return
+		}
+	}
+	rejectCredentials := func() {
+		for _, key := range limitKeys {
+			s.limiter.recordFailure(key)
+		}
+		writeProblem(w, http.StatusUnauthorized, "invalid_credentials", "Couldn't sign you in",
+			"The email or password is incorrect. Check both and try again.")
+	}
+
+	user, err := s.store.GetUserByEmail(r.Context(), email)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(req.Password))
-			writeProblem(w, http.StatusUnauthorized, "invalid_credentials", "Couldn't sign you in",
-				"The email or password is incorrect. Check both and try again.")
+			rejectCredentials()
 			return
 		}
 		s.internalError(w, err)
 		return
 	}
 	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)) != nil {
-		writeProblem(w, http.StatusUnauthorized, "invalid_credentials", "Couldn't sign you in",
-			"The email or password is incorrect. Check both and try again.")
+		rejectCredentials()
 		return
+	}
+	for _, key := range limitKeys {
+		s.limiter.reset(key)
 	}
 
 	token := randomToken()
@@ -194,4 +213,14 @@ func (s *Server) requireCSRF(next http.Handler) http.Handler {
 func sessionFrom(ctx context.Context) db.GetSessionRow {
 	sess, _ := ctx.Value(sessionKey).(db.GetSessionRow)
 	return sess
+}
+
+// clientIP returns the request IP without the port (chi RealIP middleware has
+// already resolved X-Forwarded-For when trusted).
+func clientIP(r *http.Request) string {
+	host := r.RemoteAddr
+	if i := strings.LastIndex(host, ":"); i > 0 {
+		host = host[:i]
+	}
+	return host
 }
