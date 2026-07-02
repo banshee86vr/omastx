@@ -1,0 +1,36 @@
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--mist);
+}
+
+.input {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
+  border: 1px solid var(--gridline);
+  background: var(--abyss);
+  color: var(--foam);
+  font-size: var(--text-md);
+  transition: border-color var(--duration-hover) var(--ease-out);
+}
+
+.input:focus {
+  border-color: var(--beacon);
+  outline: none;
+}
+
+.hint {
+  font-size: var(--text-xs);
+  color: var(--mist);
+}
+
+.error {
+  font-size: var(--text-xs);
+  color: var(--alarm);
+}

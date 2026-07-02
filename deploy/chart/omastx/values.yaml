@@ -1,0 +1,62 @@
+# Name of an existing Secret holding the sensitive configuration. Required.
+# The chart never templates these values inline. Create it with:
+#   kubectl create secret generic omastx \
+#     --from-literal=OMASTX_MASTER_KEY=$(openssl rand -hex 32) \
+#     --from-literal=OMASTX_ADMIN_EMAIL=admin@example.com \
+#     --from-literal=OMASTX_ADMIN_PASSWORD=... \
+#     --from-literal=DATABASE_URL=postgres://user:pass@host:5432/omastx
+# When postgres.internal.enabled=true, DATABASE_URL may be omitted from the
+# Secret; the chart points the backend at the bundled instance instead, and the
+# POSTGRES_PASSWORD key is then required.
+existingSecret: ""
+
+backend:
+  image:
+    repository: ghcr.io/banshee86vr/omastx-backend
+    tag: ""          # defaults to .Chart.appVersion
+    pullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+frontend:
+  image:
+    repository: ghcr.io/banshee86vr/omastx-frontend
+    tag: ""          # defaults to .Chart.appVersion
+    pullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  host: ""
+  tls:
+    enabled: false
+    secretName: ""
+  annotations: {}
+
+postgres:
+  # Test-install convenience only; use an external database in production.
+  internal:
+    enabled: false
+    image: postgres:16-alpine
+    database: omastx
+    user: omastx
+    storage: 5Gi
+    storageClassName: ""
+
+imagePullSecrets: []

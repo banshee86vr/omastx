@@ -1,0 +1,66 @@
+/* Night Passage design tokens — SPEC §4.2–§4.4. Binding; do not improvise. */
+
+:root[data-theme="night"] {
+  --abyss: #0a141f; /* app background — deep sea, NOT pure black */
+  --sounding: #101e2c; /* raised surfaces: panels, drawers */
+  --shoal: #17293a; /* hover / selected rows */
+  --gridline: #24384c; /* structural lines — visible, part of the aesthetic */
+  --foam: #e7edf2; /* primary text */
+  --mist: #8fa3b5; /* secondary text */
+  --beacon: #f5b54a; /* THE accent: interaction, focus, links, brand */
+  /* Functional status colors — drift semantics only, never decoration: */
+  --current: #58b98e;
+  --caution: #e0a63e;
+  --alarm: #e25d5d;
+  --fathom: #4e7a96;
+  /* Text that must sit on top of the beacon accent (buttons): */
+  --on-beacon: #0a141f;
+}
+
+/* Daylight chart — derived from the same hues, not an inversion (SPEC §4.1). */
+:root[data-theme="day"] {
+  --abyss: #eef2f5;
+  --sounding: #f9fbfc;
+  --shoal: #dfe8ee;
+  --gridline: #b9c9d6;
+  --foam: #16232e;
+  --mist: #4d6376;
+  --beacon: #9c6a0d;
+  --current: #237350;
+  --caution: #8a5f0f;
+  --alarm: #b03636;
+  --fathom: #38607c;
+  --on-beacon: #ffffff;
+}
+
+:root {
+  /* Typography — SPEC §4.3 */
+  --font-display: "Bricolage Grotesque", sans-serif;
+  --font-body: "Public Sans", sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.75rem;
+  --text-2xl: 2.5rem;
+
+  --leading-body: 1.5;
+  --leading-display: 1.15;
+
+  /* Spacing scale — SPEC §4.4 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 40px;
+
+  /* Instrument, not friendly-SaaS pill */
+  --radius: 2px;
+
+  /* Motion — SPEC §4.6 */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.4, 1);
+  --duration-hover: 140ms;
+}

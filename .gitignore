@@ -1,0 +1,18 @@
+# Go
+backend/bin/
+backend/coverage.out
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Env & secrets
+.env
+deploy/.env
+
+# Helm
+deploy/chart/*.tgz
+
+# OS / editor
+.DS_Store

@@ -1,0 +1,34 @@
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius);
+  border: 1px solid var(--gridline);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--mist);
+}
+
+/* Status colors encode drift class only, always alongside the text label. */
+.current {
+  color: var(--current);
+  border-color: color-mix(in srgb, var(--current) 45%, transparent);
+}
+
+.caution {
+  color: var(--caution);
+  border-color: color-mix(in srgb, var(--caution) 45%, transparent);
+}
+
+.alarm {
+  color: var(--alarm);
+  border-color: color-mix(in srgb, var(--alarm) 45%, transparent);
+}
+
+.fathom {
+  color: var(--fathom);
+  border-color: color-mix(in srgb, var(--fathom) 45%, transparent);
+}

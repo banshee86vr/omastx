@@ -1,0 +1,45 @@
+.region {
+  position: fixed;
+  bottom: var(--space-5);
+  right: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  z-index: 50;
+}
+
+.toast {
+  background: var(--sounding);
+  border: 1px solid var(--gridline);
+  border-left: 3px solid var(--beacon);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+  max-width: 380px;
+  animation: rise 150ms var(--ease-out);
+}
+
+.error {
+  border-left-color: var(--alarm);
+}
+
+.title {
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+
+.detail {
+  font-size: var(--text-sm);
+  color: var(--mist);
+  margin-top: var(--space-1);
+}
+
+@keyframes rise {
+  from {
+    transform: translateY(6px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}

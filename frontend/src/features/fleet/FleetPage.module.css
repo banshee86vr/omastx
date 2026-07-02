@@ -1,0 +1,14 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.headline {
+  font-size: var(--text-2xl);
+}
+
+.subline {
+  color: var(--mist);
+  margin-top: var(--space-1);
+}
