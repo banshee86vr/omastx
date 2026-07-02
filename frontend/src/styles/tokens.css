@@ -1,35 +1,37 @@
-/* Night Passage design tokens — SPEC §4.2–§4.4. Binding; do not improvise. */
+/* Design tokens. Palette: dark grey + neon yellow accent (DECISIONS.md D7 — overrides
+   the SPEC §4.2 hues; token names, roles and all other §4 rules stay binding). */
 
 :root[data-theme="night"] {
-  --abyss: #0a141f; /* app background — deep sea, NOT pure black */
-  --sounding: #101e2c; /* raised surfaces: panels, drawers */
-  --shoal: #17293a; /* hover / selected rows */
-  --gridline: #24384c; /* structural lines — visible, part of the aesthetic */
-  --foam: #e7edf2; /* primary text */
-  --mist: #8fa3b5; /* secondary text */
-  --beacon: #f5b54a; /* THE accent: interaction, focus, links, brand */
+  --abyss: #141414; /* app background — deep grey, NOT pure black */
+  --sounding: #1d1d1d; /* raised surfaces: panels, drawers */
+  --shoal: #272727; /* hover / selected rows */
+  --gridline: #383838; /* structural lines — visible, part of the aesthetic */
+  --foam: #ededed; /* primary text */
+  --mist: #a0a0a0; /* secondary text */
+  --beacon: #e3ff2f; /* THE accent: interaction, focus, links, brand. Neon yellow. */
   /* Functional status colors — drift semantics only, never decoration: */
-  --current: #58b98e;
-  --caution: #e0a63e;
-  --alarm: #e25d5d;
-  --fathom: #4e7a96;
+  --current: #58c98e;
+  --caution: #ffab24;
+  --alarm: #ff5f5f;
+  --fathom: #7e8b96;
   /* Text that must sit on top of the beacon accent (buttons): */
-  --on-beacon: #0a141f;
+  --on-beacon: #141414;
 }
 
-/* Daylight chart — derived from the same hues, not an inversion (SPEC §4.1). */
+/* Daylight theme — derived from the same hues, not an inversion. The accent
+   darkens to a chartreuse-olive so text/controls keep >= 4.5:1 on light grey. */
 :root[data-theme="day"] {
-  --abyss: #eef2f5;
-  --sounding: #f9fbfc;
-  --shoal: #dfe8ee;
-  --gridline: #b9c9d6;
-  --foam: #16232e;
-  --mist: #4d6376;
-  --beacon: #9c6a0d;
+  --abyss: #f0f0f0;
+  --sounding: #fafafa;
+  --shoal: #e3e3e3;
+  --gridline: #c4c4c4;
+  --foam: #1c1c1c;
+  --mist: #5c5c5c;
+  --beacon: #5c6b00;
   --current: #237350;
-  --caution: #8a5f0f;
+  --caution: #8a5a0f;
   --alarm: #b03636;
-  --fathom: #38607c;
+  --fathom: #55636e;
   --on-beacon: #ffffff;
 }
 

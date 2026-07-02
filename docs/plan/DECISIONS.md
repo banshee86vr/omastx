@@ -43,3 +43,13 @@ single-instance StatefulSet for test installs only (not a production database).
 The chart never templates `OMASTX_MASTER_KEY`, admin credentials, or `DATABASE_URL`
 inline. Consumers create a Secret and set `existingSecret` in values. Aligns with SPEC
 §2.6 (credentials never logged / never leave the backend).
+
+## D7: Palette override — dark grey + neon yellow accent (owner request, 2026-07-02)
+
+The owner replaced the SPEC §4.2 "Night Passage" deep-sea blues with a neutral dark grey
+palette and a neon yellow accent. Only the color *values* in
+`frontend/src/styles/tokens.css` changed; everything else in §4 remains binding: token
+names and roles (`--abyss`…`--fathom`), single interactive accent (`--beacon`), status
+colors for drift semantics only, typography, spacing, 2px radius, and the derived (not
+inverted) light theme, whose accent darkens to chartreuse-olive `#5c6b00` for contrast.
+All pairs verified ≥ 4.5:1. Supersedes the §4.2 hex values wherever they are quoted.

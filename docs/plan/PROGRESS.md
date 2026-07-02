@@ -26,14 +26,16 @@
 
 ## Known deviations from SPEC
 
-None yet. Record any deliberate deviation here with a one-line rationale and a link to
-the relevant entry in [DECISIONS.md](DECISIONS.md).
+- §4.2 color values replaced by owner request: dark grey palette + neon yellow accent
+  (light theme accent: chartreuse-olive). Token names/roles and all other §4 rules
+  unchanged. See [DECISIONS.md](DECISIONS.md) D7.
 
 ## Session log
 
 | Date | Session summary |
 |------|-----------------|
 | 2026-07-02 | Created planning scaffolding (this folder, .cursor/rules). Implemented and verified all of M1: Go backend (chi + pgx + sqlc + goose, session auth with CSRF, admin bootstrap), React frontend (tokens, 9 ui primitives, sign-in, app frame, empty fleet page), docker-compose stack, Helm chart, CI + release workflows. Verification record in M1-skeleton.md. go.mod pinned to go 1.25 (matches golang:1.25-alpine build image). |
+| 2026-07-02 | Palette override per owner request (DECISIONS D7): dark grey base + neon yellow `#e3ff2f` accent in `tokens.css`; day theme accent darkened to chartreuse-olive `#5c6b00`. Gate outcome: no code-level tests warranted (CSS values only — verified instead with a WCAG contrast script, all 13 fg/bg pairs ≥ 4.5:1, both themes); no security surface touched; best practices clean (deviation from SPEC §4.2 documented in D7 + "Known deviations", token names/roles unchanged, frontend rebuilt and screenshot-verified in the compose stack). |
 | 2026-07-02 | Adopted the non-negotiable post-implementation gate (tests / security / best-practices review after every implementation) — codified in `.cursor/rules/omastx-workflow.mdc` and every milestone wrap-up. Applied it retroactively to M1: added table-driven tests for master-key/config parsing; security review found the frontend image ran nginx as root — switched to `nginxinc/nginx-unprivileged` (uid 101) and added pod/container securityContext hardening to the chart's frontend deployment; best-practices review otherwise clean (session tokens stored hashed, bcrypt timing mitigation, constant-time CSRF compare, forward-only migrations, distroless nonroot backend). Known deferred hardening: login rate limiting (target M2). |
 
 ## How to resume (instructions for the next session)
