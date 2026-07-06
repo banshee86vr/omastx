@@ -6,9 +6,14 @@
 }
 
 html,
-body,
-#root {
+body {
   height: 100%;
+}
+
+#root {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
 }
 
 body {

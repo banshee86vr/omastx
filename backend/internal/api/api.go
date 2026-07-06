@@ -21,6 +21,7 @@ type ClusterStore interface {
 	CreateCluster(ctx context.Context, arg db.CreateClusterParams) (db.CreateClusterRow, error)
 	ListClusters(ctx context.Context) ([]db.ListClustersRow, error)
 	GetCluster(ctx context.Context, id uuid.UUID) (db.GetClusterRow, error)
+	GetClusterConnection(ctx context.Context, id uuid.UUID) (db.GetClusterConnectionRow, error)
 	DeleteCluster(ctx context.Context, id uuid.UUID) (int64, error)
 }
 
@@ -29,8 +30,17 @@ type ArtifactStore interface {
 	GetScan(ctx context.Context, id uuid.UUID) (db.Scan, error)
 	ListScansByCluster(ctx context.Context, arg db.ListScansByClusterParams) ([]db.Scan, error)
 	ListArtifacts(ctx context.Context, arg db.ListArtifactsParams) ([]db.ListArtifactsRow, error)
+	CountObservationKindsForLatestScan(ctx context.Context, clusterID uuid.UUID) ([]db.CountObservationKindsForLatestScanRow, error)
+	CountAuthRequiredForLatestScan(ctx context.Context, clusterID uuid.UUID) (int32, error)
 	GetArtifact(ctx context.Context, id uuid.UUID) (db.GetArtifactRow, error)
 	GetLatestCache(ctx context.Context, arg db.GetLatestCacheParams) (db.GetLatestCacheRow, error)
+}
+
+// RegistryAuthStore persists cluster registry / Helm repo credentials.
+type RegistryAuthStore interface {
+	ListRegistryAuth(ctx context.Context, clusterID uuid.UUID) ([]db.ListRegistryAuthRow, error)
+	UpsertRegistryAuth(ctx context.Context, arg db.UpsertRegistryAuthParams) (uuid.UUID, error)
+	DeleteRegistryAuth(ctx context.Context, arg db.DeleteRegistryAuthParams) error
 }
 
 // Store is everything the API needs from the database; *db.Queries satisfies it.
@@ -38,6 +48,7 @@ type Store interface {
 	AuthStore
 	ClusterStore
 	ArtifactStore
+	RegistryAuthStore
 }
 
 // Scanner triggers and streams scans. *scan.Manager satisfies it.
@@ -55,6 +66,9 @@ type Options struct {
 	SecureCookies bool
 	// MasterKey encrypts kubeconfigs at rest (32 bytes, SPEC §2.6).
 	MasterKey []byte
+	// DevMode enables passwordless POST /api/auth/dev-login (local dev only).
+	DevMode       bool
+	DevLoginEmail string
 	// Connector performs cluster connectivity + RBAC checks.
 	Connector cluster.Connector
 	// Scanner runs scans; Scheduler re-reads schedules after cluster changes.
@@ -67,6 +81,8 @@ type Server struct {
 	logger        *slog.Logger
 	secureCookies bool
 	masterKey     []byte
+	devMode       bool
+	devLoginEmail string
 	connector     cluster.Connector
 	scanner       Scanner
 	scheduler     Scheduler
@@ -79,6 +95,8 @@ func NewServer(store Store, logger *slog.Logger, opts Options) *Server {
 		logger:        logger,
 		secureCookies: opts.SecureCookies,
 		masterKey:     opts.MasterKey,
+		devMode:       opts.DevMode,
+		devLoginEmail: opts.DevLoginEmail,
 		connector:     opts.Connector,
 		scanner:       opts.Scanner,
 		scheduler:     opts.Scheduler,
@@ -101,6 +119,9 @@ func (s *Server) Router() http.Handler {
 
 	r.Route("/api", func(r chi.Router) {
 		r.Post("/auth/login", s.handleLogin)
+		if s.devMode {
+			r.Post("/auth/dev-login", s.handleDevLogin)
+		}
 
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireAuth, s.requireCSRF)
@@ -113,10 +134,15 @@ func (s *Server) Router() http.Handler {
 				r.Post("/inspect", s.handleInspectKubeconfig)
 				r.Post("/check", s.handleCheckCluster)
 				r.Get("/{id}", s.handleGetCluster)
+				r.Get("/{id}/artifact-kinds", s.handleArtifactKindCounts)
 				r.Delete("/{id}", s.handleDeleteCluster)
 				r.Post("/{id}/scan", s.handleStartScan)
 				r.Get("/{id}/scans", s.handleListScans)
 				r.Get("/{id}/scans/{sid}/events", s.handleScanEvents)
+				r.Get("/{id}/registry-auth", s.handleListRegistryAuth)
+				r.Get("/{id}/cluster-secrets", s.handleListPullSecrets)
+				r.Put("/{id}/registry-auth", s.handlePutRegistryAuth)
+				r.Delete("/{id}/registry-auth/{target}", s.handleDeleteRegistryAuth)
 			})
 
 			r.Route("/artifacts", func(r chi.Router) {

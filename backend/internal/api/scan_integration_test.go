@@ -18,6 +18,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 
+	"github.com/google/go-containerregistry/pkg/authn"
+
 	"github.com/banshee86vr/omastx/backend/internal/core"
 	"github.com/banshee86vr/omastx/backend/internal/resolvers/oci"
 	"github.com/banshee86vr/omastx/backend/internal/scan"
@@ -27,7 +29,9 @@ import (
 
 type apiFakeLister struct{ tags []string }
 
-func (f apiFakeLister) List(context.Context, string) ([]string, error) { return f.tags, nil }
+func (f apiFakeLister) List(context.Context, string, authn.Authenticator) ([]string, error) {
+	return f.tags, nil
+}
 
 // TestScanFlowIntegration exercises POST /clusters/{id}/scan end to end against a
 // dockerized Postgres (SPEC §7): trigger a scan with a fake cluster + fake
@@ -158,6 +162,52 @@ func TestScanFlowIntegration(t *testing.T) {
 	}
 	if got.DriftClass != "minor" {
 		t.Errorf("drift_class = %q, want minor", got.DriftClass)
+	}
+
+	kinds := doJSON(t, h, http.MethodGet, "/api/clusters/"+clusterDto.ID+"/artifact-kinds", "", authed)
+	if kinds.Code != http.StatusOK {
+		t.Fatalf("artifact kinds: %d %s", kinds.Code, kinds.Body)
+	}
+	var kindResp struct {
+		Images       int `json:"images"`
+		Helm         int `json:"helm"`
+		Total        int `json:"total"`
+		AuthRequired int `json:"auth_required"`
+	}
+	if err := json.Unmarshal(kinds.Body.Bytes(), &kindResp); err != nil {
+		t.Fatal(err)
+	}
+	if kindResp.Images != 1 || kindResp.Helm != 0 || kindResp.Total != 1 || kindResp.AuthRequired != 0 {
+		t.Fatalf("kind counts = %+v, want 1 image", kindResp)
+	}
+
+	scansResp := doJSON(t, h, http.MethodGet, "/api/clusters/"+clusterDto.ID+"/scans", "", authed)
+	if scansResp.Code != http.StatusOK {
+		t.Fatalf("list scans: %d %s", scansResp.Code, scansResp.Body)
+	}
+	var scansList struct {
+		Scans []struct {
+			Status string          `json:"status"`
+			Stats  json.RawMessage `json:"stats"`
+		} `json:"scans"`
+	}
+	if err := json.Unmarshal(scansResp.Body.Bytes(), &scansList); err != nil {
+		t.Fatal(err)
+	}
+	if len(scansList.Scans) == 0 || scansList.Scans[0].Status != "done" {
+		t.Fatalf("expected a completed scan in list: %+v", scansList.Scans)
+	}
+	var scanStats struct {
+		Total        int `json:"total"`
+		Images       int `json:"images"`
+		Helm         int `json:"helm"`
+		AuthRequired int `json:"auth_required"`
+	}
+	if err := json.Unmarshal(scansList.Scans[0].Stats, &scanStats); err != nil {
+		t.Fatal(err)
+	}
+	if scanStats.Total != 1 || scanStats.Images != 1 || scanStats.Helm != 0 || scanStats.AuthRequired != 0 {
+		t.Fatalf("scan stats = %+v, want 1 total image", scanStats)
 	}
 
 	detail := doJSON(t, h, http.MethodGet, "/api/artifacts/"+got.ID, "", authed)

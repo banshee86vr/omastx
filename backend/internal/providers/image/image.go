@@ -88,6 +88,7 @@ type accumulator struct {
 }
 
 func (a *accumulator) addPodSpec(ownerKind, ownerName, namespace string, spec *corev1.PodSpec) {
+	pullSecrets := pullSecretNames(spec)
 	add := func(img string) {
 		if img == "" {
 			return
@@ -101,17 +102,21 @@ func (a *accumulator) addPodSpec(ownerKind, ownerName, namespace string, spec *c
 			return
 		}
 		a.seen[key] = true
+		meta := map[string]any{
+			"registry": registry,
+			"image":    img,
+		}
+		if len(pullSecrets) > 0 {
+			meta["image_pull_secrets"] = pullSecrets
+		}
 		a.artifacts = append(a.artifacts, core.Artifact{
-			Kind:      "image",
-			Namespace: namespace,
-			OwnerKind: ownerKind,
-			OwnerName: ownerName,
-			Identity:  identity,
-			Installed: installed,
-			SourceMeta: map[string]any{
-				"registry": registry,
-				"image":    img,
-			},
+			Kind:       "image",
+			Namespace:  namespace,
+			OwnerKind:  ownerKind,
+			OwnerName:  ownerName,
+			Identity:   identity,
+			Installed:  installed,
+			SourceMeta: meta,
 		})
 	}
 	for _, ct := range spec.InitContainers {
@@ -123,6 +128,19 @@ func (a *accumulator) addPodSpec(ownerKind, ownerName, namespace string, spec *c
 	for _, ct := range spec.EphemeralContainers {
 		add(ct.Image)
 	}
+}
+
+func pullSecretNames(spec *corev1.PodSpec) []string {
+	if spec == nil || len(spec.ImagePullSecrets) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(spec.ImagePullSecrets))
+	for _, ref := range spec.ImagePullSecrets {
+		if ref.Name != "" {
+			out = append(out, ref.Name)
+		}
+	}
+	return out
 }
 
 // parseImage normalizes a container image reference into a registry-qualified

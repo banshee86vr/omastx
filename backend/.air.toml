@@ -1,0 +1,13 @@
+# Live reload for native dev (make dev-backend / scripts/dev-local.sh).
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/omastx ./cmd/omastx"
+  bin = "./tmp/omastx"
+  include_ext = ["go", "sql"]
+  exclude_dir = ["tmp", "bin"]
+  exclude_regex = ["_test\\.go$", "internal/store/db/"]
+
+[misc]
+  clean_on_exit = true

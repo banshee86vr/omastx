@@ -45,3 +45,25 @@ func TestFromEnvRequiresDatabaseURL(t *testing.T) {
 		t.Fatalf("err = %v, want DATABASE_URL error", err)
 	}
 }
+
+func TestFromEnvDevDefaults(t *testing.T) {
+	t.Setenv("OMASTX_DEV", "true")
+	t.Setenv("DATABASE_URL", "postgres://localhost/omastx")
+	t.Setenv("OMASTX_MASTER_KEY", "")
+	t.Setenv("OMASTX_ADMIN_EMAIL", "")
+	t.Setenv("OMASTX_ADMIN_PASSWORD", "")
+
+	cfg, err := FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv: %v", err)
+	}
+	if !cfg.DevMode {
+		t.Fatal("DevMode = false, want true")
+	}
+	if len(cfg.MasterKey) != 32 {
+		t.Fatalf("MasterKey length = %d, want 32", len(cfg.MasterKey))
+	}
+	if cfg.AdminEmail != DevAdminEmail || cfg.AdminPassword != DevAdminPassword {
+		t.Fatalf("admin defaults = %q / %q", cfg.AdminEmail, cfg.AdminPassword)
+	}
+}

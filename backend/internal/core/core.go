@@ -48,6 +48,9 @@ type Latest struct {
 	ReleasesBehind *int
 	// Deprecated is set when the resolver knows the installed line is discontinued.
 	Deprecated bool
+	// Confidence is the upstream match certainty (0–1). Low values mean the resolver
+	// used a heuristic (e.g. Artifact Hub search) rather than an explicit repo URL.
+	Confidence float32
 	ResolvedAt time.Time
 }
 

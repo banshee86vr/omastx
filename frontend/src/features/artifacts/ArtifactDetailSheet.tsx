@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Sheet, Tag } from "../../ui/index.ts";
 import { ApiError } from "../../lib/api.ts";
-import { artifactQuery, driftTone } from "./artifacts.ts";
+import { artifactQuery, driftTone, isUnverifiedMatch, kindLabel } from "./artifacts.ts";
 import styles from "./ArtifactDetailSheet.module.css";
 
 interface Props {
@@ -9,11 +9,24 @@ interface Props {
   onClose: () => void;
 }
 
+function metaString(meta: Record<string, unknown> | null | undefined, key: string): string | null {
+  const v = meta?.[key];
+  return typeof v === "string" && v.trim() !== "" ? v : null;
+}
+
 export function ArtifactDetailSheet({ artifactId, onClose }: Props) {
   const { data, isLoading, error } = useQuery({
     ...artifactQuery(artifactId ?? ""),
     enabled: artifactId !== null,
   });
+
+  const sourceMeta = data?.source_meta ?? undefined;
+  const chartRepo = metaString(sourceMeta, "chart_repo");
+  const home = metaString(sourceMeta, "home");
+  const release = metaString(sourceMeta, "release");
+  const authRequired = metaString(sourceMeta, "resolve_status") === "auth_required";
+  const authDetail = metaString(sourceMeta, "resolve_detail");
+  const authTarget = metaString(sourceMeta, "auth_target");
 
   return (
     <Sheet title={data?.identity ?? "Artifact"} open={artifactId !== null} onClose={onClose}>
@@ -32,17 +45,61 @@ export function ArtifactDetailSheet({ artifactId, onClose }: Props) {
             </span>
             <span className={styles.latest}>{data.latest ?? "unknown"}</span>
             <Tag tone={driftTone(data.drift_class)}>{data.drift_class}</Tag>
+            {data.kind === "helm" && isUnverifiedMatch(data.confidence) && (
+              <Tag tone="fathom">unverified match</Tag>
+            )}
           </div>
 
+          {authRequired && (
+            <div className={styles.authNotice} role="status">
+              <p>{authDetail ?? "This artifact needs registry credentials to resolve latest."}</p>
+              {authTarget && <p className={styles.muted}>Target: {authTarget}</p>}
+              <p className={styles.muted}>
+                For images, add an imagePullSecret on the workload or configure a pull secret on
+                the cluster page. For Helm, add chart repo credentials there, then re-scan.
+              </p>
+            </div>
+          )}
+
           <dl className={styles.meta}>
+            <dt>Kind</dt>
+            <dd>{kindLabel(data.kind)}</dd>
             <dt>Cluster</dt>
             <dd>{data.cluster_name}</dd>
             <dt>Namespace</dt>
             <dd>{data.namespace}</dd>
-            <dt>Workload</dt>
+            <dt>{data.kind === "helm" ? "Release" : "Workload"}</dt>
             <dd>
-              {data.owner_kind} {data.owner_name}
+              {data.kind === "helm" && release
+                ? release
+                : `${data.owner_kind} ${data.owner_name}`}
             </dd>
+            {data.kind === "helm" && chartRepo && (
+              <>
+                <dt>Chart repo</dt>
+                <dd>
+                  <a className={styles.link} href={chartRepo} target="_blank" rel="noreferrer">
+                    {chartRepo}
+                  </a>
+                </dd>
+              </>
+            )}
+            {data.kind === "helm" && home && (
+              <>
+                <dt>Home</dt>
+                <dd>
+                  <a className={styles.link} href={home} target="_blank" rel="noreferrer">
+                    {home}
+                  </a>
+                </dd>
+              </>
+            )}
+            {data.kind === "helm" && data.confidence != null && data.confidence > 0 && (
+              <>
+                <dt>Match confidence</dt>
+                <dd>{Math.round(data.confidence * 100)}%</dd>
+              </>
+            )}
             {data.releases_behind !== null && (
               <>
                 <dt>Releases behind</dt>
@@ -71,8 +128,8 @@ export function ArtifactDetailSheet({ artifactId, onClose }: Props) {
               </ul>
             ) : (
               <p className={styles.muted}>
-                No comparable versions found. The installed tag isn&apos;t semver-comparable
-                (a digest, date, or moving tag), so drift can&apos;t be measured.
+                No comparable versions found. The installed version isn&apos;t semver-comparable,
+                so drift can&apos;t be measured.
               </p>
             )}
           </section>

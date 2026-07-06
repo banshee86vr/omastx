@@ -92,3 +92,27 @@
   font-size: var(--text-xs);
   letter-spacing: 0.04em;
 }
+
+.link {
+  color: var(--beacon);
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--beacon);
+  outline-offset: 1px;
+}
+
+.authNotice {
+  border: 1px solid color-mix(in srgb, var(--caution) 45%, transparent);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  font-size: var(--text-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}

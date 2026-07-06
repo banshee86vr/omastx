@@ -7,6 +7,13 @@ import (
 	"os"
 )
 
+// Dev-only defaults when OMASTX_DEV=true. Never enable OMASTX_DEV in production.
+const (
+	DevMasterKeyHex  = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	DevAdminEmail    = "dev@localhost"
+	DevAdminPassword = "dev"
+)
+
 type Config struct {
 	ListenAddr    string
 	DatabaseURL   string
@@ -14,24 +21,39 @@ type Config struct {
 	AdminEmail    string
 	AdminPassword string
 	SecureCookies bool
+	DevMode       bool
 }
 
 func FromEnv() (Config, error) {
+	dev := os.Getenv("OMASTX_DEV") == "true"
 	cfg := Config{
 		ListenAddr:    envOr("OMASTX_LISTEN_ADDR", ":8484"),
 		DatabaseURL:   os.Getenv("DATABASE_URL"),
 		AdminEmail:    os.Getenv("OMASTX_ADMIN_EMAIL"),
 		AdminPassword: os.Getenv("OMASTX_ADMIN_PASSWORD"),
 		SecureCookies: os.Getenv("OMASTX_SECURE_COOKIES") == "true",
+		DevMode:       dev,
 	}
 	if cfg.DatabaseURL == "" {
 		return cfg, fmt.Errorf("DATABASE_URL is required")
 	}
-	key, err := parseMasterKey(os.Getenv("OMASTX_MASTER_KEY"))
+	masterKeyRaw := os.Getenv("OMASTX_MASTER_KEY")
+	if masterKeyRaw == "" && dev {
+		masterKeyRaw = DevMasterKeyHex
+	}
+	key, err := parseMasterKey(masterKeyRaw)
 	if err != nil {
 		return cfg, err
 	}
 	cfg.MasterKey = key
+	if dev {
+		if cfg.AdminEmail == "" {
+			cfg.AdminEmail = DevAdminEmail
+		}
+		if cfg.AdminPassword == "" {
+			cfg.AdminPassword = DevAdminPassword
+		}
+	}
 	return cfg, nil
 }
 

@@ -112,7 +112,44 @@ keychain (no credentials stored in v1; private-registry creds are M6/settings). 
 per-registry-host token-bucket limiter (default 5 req/s, burst 5) throttles anonymous
 pulls (Docker Hub's anonymous quota is real, SPEC §2.2). `latest_cache` TTL defaults to 6h.
 
-`GET /api/artifacts` uses offset-based cursor pagination (`cursor` = row offset, page size
-100, fetch N+1 to detect a next page) with the fixed SPEC-default sort `drift_score` desc,
-then identity. Keyset pagination and user-selectable sort are deferred; the offset cursor
-is sufficient for single-team fleet sizes and keeps the query simple.
+## D13: Helm upstream matching — nova-style heuristics + confidence threshold (M4)
+
+Helm chart upstream resolution uses two resolvers in order (`helmrepo` then `artifacthub`);
+the orchestrator picks the first resolver that returns a non-empty latest version, preferring
+higher `Latest.Confidence` when multiple match.
+
+**HelmRepoResolver**: fetches `index.yaml` from the release's `chart_repo` metadata when
+present (confidence 1.0), otherwise tries a built-in list of public repos (bitnami,
+prometheus-community, ingress-nginx, hashicorp, jetstack) with confidence 0.85. Cache
+identity: `helmrepo:{repoURL}/{chartName}`.
+
+**ArtifactHubResolver**: searches Artifact Hub (`kind=0`, limit 20), scores hits with
+nova-style heuristics in `internal/resolvers/artifacthub/match`: exact normalized chart
+name +0.4, repo URL match +0.3, home URL +0.15, description overlap +0.1, maintainer
+overlap +0.15 (cap 1.0). Fetches `available_versions` from the best-scoring package.
+Cache identity: `artifacthub:{chartName}`.
+
+**UI threshold**: observations with `confidence < 0.6` show "unverified match" in the
+ledger and artifact Sheet (SPEC §2.2). Explicit repo matches (1.0) and default-repo hits
+(0.85) never trigger the warning.
+
+Release Secret payloads are decoded in memory using the Helm 3 gzip+base64+json format
+(same as `pkg/storage/driver`); only chart metadata is persisted in `artifacts.source_meta`.
+
+## D14: Private registry auth — workload pull secrets first, cluster config fallback (2026-07-06)
+
+Private OCI registries: the image provider records `image_pull_secrets` from each
+workload's pod template. During resolution the OCI resolver tries those secrets first
+(read from the cluster in memory via `get` on the Secret — never persisted), then
+cluster-configured pull-secret references in `registry_auth`, then surfaces
+`auth_required` in `artifacts.source_meta` for the UI to prompt.
+
+Private Helm repos: `helmrepo` sends HTTP basic auth from encrypted cluster credentials
+(`registry_auth.method=basic`) or from a referenced dockerconfig secret. 401/403 returns
+`AuthRequiredError`; the cluster detail page collects credentials.
+
+`registry_auth` stores either a Kubernetes secret reference (`pull_secret`) or
+AES-256-GCM encrypted username/password (`basic`, Helm only). Passwords are never returned
+by the API (`has_password` flag only).
+
+

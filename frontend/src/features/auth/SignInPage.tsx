@@ -1,8 +1,9 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, setCsrfToken, ApiError, type Problem } from "../../lib/api.ts";
 import { meQuery } from "./auth.ts";
+import { isDevAutoLogin, tryAutoDevLogin } from "./devLogin.ts";
 import { Button, Field } from "../../ui/index.ts";
 import { AmmoniteMark } from "../../ui/AmmoniteMark.tsx";
 import styles from "./SignInPage.module.css";
@@ -13,7 +14,28 @@ export function SignInPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [problem, setProblem] = useState<Problem | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(isDevAutoLogin());
+
+  useEffect(() => {
+    if (!isDevAutoLogin()) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      if (await tryAutoDevLogin(queryClient)) {
+        if (!cancelled) {
+          await navigate({ to: "/" });
+        }
+        return;
+      }
+      if (!cancelled) {
+        setBusy(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate, queryClient]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -73,7 +95,7 @@ export function SignInPage() {
             </div>
           )}
           <Button type="submit" disabled={busy}>
-            {busy ? "Signing in…" : "Sign in"}
+            {busy ? (isDevAutoLogin() ? "Opening…" : "Signing in…") : "Sign in"}
           </Button>
         </form>
       </main>

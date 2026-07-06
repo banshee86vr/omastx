@@ -57,6 +57,23 @@ type Observation struct {
 	Confidence       pgtype.Float4 `json:"confidence"`
 }
 
+type RegistryAuth struct {
+	ID                uuid.UUID          `json:"id"`
+	ClusterID         uuid.UUID          `json:"cluster_id"`
+	Target            string             `json:"target"`
+	Kind              string             `json:"kind"`
+	Method            string             `json:"method"`
+	SecretNamespace   pgtype.Text        `json:"secret_namespace"`
+	SecretName        pgtype.Text        `json:"secret_name"`
+	UsernameEnc       []byte             `json:"username_enc"`
+	UsernameNonce     []byte             `json:"username_nonce"`
+	PasswordEnc       []byte             `json:"password_enc"`
+	PasswordNonce     []byte             `json:"password_nonce"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	SecretUsernameKey pgtype.Text        `json:"secret_username_key"`
+	SecretPasswordKey pgtype.Text        `json:"secret_password_key"`
+}
+
 type Scan struct {
 	ID         uuid.UUID          `json:"id"`
 	ClusterID  uuid.UUID          `json:"cluster_id"`

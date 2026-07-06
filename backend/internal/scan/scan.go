@@ -15,12 +15,14 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/banshee86vr/omastx/backend/internal/cluster"
 	"github.com/banshee86vr/omastx/backend/internal/core"
 	"github.com/banshee86vr/omastx/backend/internal/crypto"
 	"github.com/banshee86vr/omastx/backend/internal/drift"
+	"github.com/banshee86vr/omastx/backend/internal/registryauth"
 	"github.com/banshee86vr/omastx/backend/internal/store/db"
 )
 
@@ -42,6 +44,18 @@ type Stats struct {
 	Deprecated int `json:"deprecated"`
 	Unknown    int `json:"unknown"`
 	Errors     int `json:"errors"`
+	Images       int `json:"images"`
+	Helm         int `json:"helm"`
+	AuthRequired int `json:"auth_required"`
+}
+
+func (s *Stats) addKind(kind string) {
+	switch kind {
+	case "image":
+		s.Images++
+	case "helm":
+		s.Helm++
+	}
 }
 
 func (s *Stats) add(class drift.Class) {
@@ -77,6 +91,7 @@ type ClientFactory func(kubeconfig []byte, contextName string) (kubernetes.Inter
 // Config configures a Manager.
 type Config struct {
 	Store         Store
+	RegistryAuth  registryauth.Store
 	Providers     []core.ArtifactProvider
 	Resolvers     []core.VersionResolver
 	Hub           *Hub
@@ -90,6 +105,7 @@ type Config struct {
 // Manager runs and tracks scans.
 type Manager struct {
 	store         Store
+	registryAuth  registryauth.Store
 	providers     []core.ArtifactProvider
 	resolvers     []core.VersionResolver
 	hub           *Hub
@@ -106,6 +122,7 @@ type Manager struct {
 func NewManager(cfg Config) *Manager {
 	m := &Manager{
 		store:         cfg.Store,
+		registryAuth:  cfg.RegistryAuth,
 		providers:     cfg.Providers,
 		resolvers:     cfg.Resolvers,
 		hub:           cfg.Hub,
@@ -197,9 +214,13 @@ func (m *Manager) run(conn db.GetClusterConnectionRow, scanID uuid.UUID) {
 	}
 
 	client := clusterClient{id: conn.ID, name: conn.Name, cs: cs}
+	if m.registryAuth != nil {
+		prov := registryauth.NewProvider(cs, conn.ID, m.registryAuth, m.masterKey)
+		ctx = registryauth.WithProvider(ctx, prov)
+	}
 
 	m.hub.Publish(scanID, Event{Phase: PhaseDiscovering, Message: "Discovering workloads"})
-	artifacts, discErr := m.discover(ctx, client)
+	artifacts, discErr := m.discover(ctx, scanID, client, conn.RbacReport)
 	if len(artifacts) == 0 && discErr != nil {
 		m.fail(ctx, conn.ID, scanID, "Couldn't read workloads from the cluster", discErr)
 		return
@@ -230,8 +251,17 @@ func (m *Manager) run(conn db.GetClusterConnectionRow, scanID uuid.UUID) {
 	})
 }
 
-// discover runs every provider in parallel and merges their artifacts.
-func (m *Manager) discover(ctx context.Context, client core.ClusterClient) ([]core.Artifact, error) {
+// discover runs every provider in parallel and merges their artifacts. The Helm
+// provider is skipped when RBAC lacks secrets access (images-only mode, SPEC §2.6).
+func (m *Manager) discover(ctx context.Context, scanID uuid.UUID, client core.ClusterClient, rbacJSON []byte) ([]core.Artifact, error) {
+	helmOK := true
+	if len(rbacJSON) > 0 {
+		var report cluster.RBACReport
+		if err := json.Unmarshal(rbacJSON, &report); err == nil {
+			helmOK = report.HelmOK
+		}
+	}
+
 	var (
 		wg   sync.WaitGroup
 		mu   sync.Mutex
@@ -239,6 +269,14 @@ func (m *Manager) discover(ctx context.Context, client core.ClusterClient) ([]co
 		errs []error
 	)
 	for _, p := range m.providers {
+		if p.Kind() == "helm" && !helmOK {
+			m.logger.Info("skipping helm provider", "cluster", client.Name(), "reason", "secrets access not granted")
+			m.hub.Publish(scanID, Event{
+				Phase:   PhaseDiscovering,
+				Message: "Helm discovery skipped — secrets access not granted (images-only mode)",
+			})
+			continue
+		}
 		wg.Add(1)
 		go func(p core.ArtifactProvider) {
 			defer wg.Done()
@@ -278,6 +316,11 @@ func (m *Manager) resolveAndPersist(ctx context.Context, clusterID, scanID uuid.
 			defer func() { <-sem }()
 
 			latest, class, score, rerr := m.resolveOne(ctx, a)
+			authRequired := false
+			if ae, ok := registryauth.IsAuthRequired(rerr); ok {
+				a = annotateAuthRequired(a, ae)
+				authRequired = true
+			}
 			if perr := m.persist(ctx, clusterID, scanID, a, latest, class, score); perr != nil {
 				m.logger.Error("persist artifact", "identity", a.Identity, "error", perr)
 				rerr = perr
@@ -285,6 +328,10 @@ func (m *Manager) resolveAndPersist(ctx context.Context, clusterID, scanID uuid.
 
 			mu.Lock()
 			stats.add(class)
+			stats.addKind(a.Kind)
+			if authRequired {
+				stats.AuthRequired++
+			}
 			if rerr != nil {
 				stats.Errors++
 			}
@@ -305,21 +352,57 @@ func (m *Manager) resolveAndPersist(ctx context.Context, clusterID, scanID uuid.
 }
 
 func (m *Manager) resolveOne(ctx context.Context, a core.Artifact) (core.Latest, drift.Class, float64, error) {
+	var (
+		best    core.Latest
+		hasBest bool
+		lastErr error
+	)
 	for _, r := range m.resolvers {
 		if !r.CanResolve(a) {
 			continue
 		}
 		latest, err := r.Resolve(ctx, a)
 		if err != nil {
-			return core.Latest{}, drift.Unknown, 0, err
+			lastErr = err
+			continue
 		}
-		class, score := drift.Compute(a.Installed, latest.Version)
-		if latest.Deprecated {
-			class = drift.Deprecated
+		if latest.Version == "" {
+			continue
 		}
-		return latest, class, score, nil
+		if !hasBest || latest.Confidence > best.Confidence {
+			best = latest
+			hasBest = true
+		}
 	}
-	return core.Latest{}, drift.Unknown, 0, nil
+	if !hasBest {
+		if lastErr != nil {
+			return core.Latest{}, drift.Unknown, 0, lastErr
+		}
+		return core.Latest{}, drift.Unknown, 0, nil
+	}
+	class, score := drift.Compute(a.Installed, best.Version)
+	if best.Deprecated {
+		class = drift.Deprecated
+	}
+	return best, class, score, nil
+}
+
+func annotateAuthRequired(a core.Artifact, ae *registryauth.AuthRequiredError) core.Artifact {
+	if ae == nil {
+		return a
+	}
+	meta := map[string]any{}
+	for k, v := range a.SourceMeta {
+		meta[k] = v
+	}
+	meta["resolve_status"] = "auth_required"
+	meta["auth_kind"] = ae.Kind
+	meta["auth_target"] = ae.Target
+	if ae.Detail != "" {
+		meta["resolve_detail"] = ae.Detail
+	}
+	a.SourceMeta = meta
+	return a
 }
 
 func (m *Manager) persist(ctx context.Context, clusterID, scanID uuid.UUID, a core.Artifact, latest core.Latest, class drift.Class, score float64) error {
@@ -350,6 +433,9 @@ func (m *Manager) persist(ctx context.Context, clusterID, scanID uuid.UUID, a co
 	}
 	if latest.ReleasesBehind != nil {
 		obs.ReleasesBehind = pgInt4(*latest.ReleasesBehind)
+	}
+	if latest.Confidence > 0 {
+		obs.Confidence = pgtype.Float4{Float32: latest.Confidence, Valid: true}
 	}
 	return m.store.InsertObservation(ctx, obs)
 }

@@ -161,6 +161,7 @@ export const artifactSchema = z.object({
   drift_class: driftClassSchema,
   drift_score: z.number(),
   releases_behind: z.number().nullable(),
+  confidence: z.number().nullable().optional(),
   last_seen: z.string(),
 });
 export type Artifact = z.infer<typeof artifactSchema>;
@@ -187,6 +188,9 @@ export const scanStatsSchema = z.object({
   deprecated: z.number(),
   unknown: z.number(),
   errors: z.number(),
+  images: z.number().optional(),
+  helm: z.number().optional(),
+  auth_required: z.number().optional(),
 });
 export type ScanStats = z.infer<typeof scanStatsSchema>;
 
@@ -201,13 +205,61 @@ export const scanSchema = z.object({
 });
 export type Scan = z.infer<typeof scanSchema>;
 
+export const artifactKindCountsSchema = z.object({
+  images: z.number(),
+  helm: z.number(),
+  total: z.number(),
+  auth_required: z.number(),
+});
+export type ArtifactKindCounts = z.infer<typeof artifactKindCountsSchema>;
+
 const scansResponseSchema = z.object({ scans: z.array(scanSchema) });
+
+export const registryAuthEntrySchema = z.object({
+  target: z.string(),
+  kind: z.enum(["image", "helm"]),
+  method: z.enum(["pull_secret", "basic"]),
+  secret_namespace: z.string().nullable().optional(),
+  secret_name: z.string().nullable().optional(),
+  secret_username_key: z.string().nullable().optional(),
+  secret_password_key: z.string().nullable().optional(),
+  has_password: z.boolean().optional(),
+});
+export type RegistryAuthEntry = z.infer<typeof registryAuthEntrySchema>;
+
+export const clusterSecretSchema = z.object({
+  namespace: z.string(),
+  name: z.string(),
+  keys: z.array(z.string()),
+});
+export type ClusterSecret = z.infer<typeof clusterSecretSchema>;
+
+const clusterSecretsResponseSchema = z.object({
+  secrets: z.array(clusterSecretSchema),
+});
+
+const registryAuthResponseSchema = z.object({
+  registry_auth: z.array(registryAuthEntrySchema),
+});
+
+export interface PutRegistryAuthInput {
+  target: string;
+  kind: "image" | "helm";
+  method: "pull_secret" | "basic";
+  secret_namespace?: string;
+  secret_name?: string;
+  secret_username_key?: string;
+  secret_password_key?: string;
+  username?: string;
+  password?: string;
+}
 
 export interface ArtifactFilters {
   cluster?: string | undefined;
   kind?: string | undefined;
   namespace?: string | undefined;
   class?: DriftClass | undefined;
+  resolve_status?: string | undefined;
   q?: string | undefined;
   cursor?: number | undefined;
 }
@@ -225,6 +277,9 @@ export const api = {
       method: "POST",
       body: { email, password },
     });
+  },
+  devLogin(): Promise<AuthResponse> {
+    return request("/api/auth/dev-login", authResponseSchema, { method: "POST" });
   },
   logout(): Promise<void> {
     return request("/api/auth/logout", null, { method: "POST" });
@@ -264,12 +319,16 @@ export const api = {
   listScans(clusterId: string): Promise<Scan[]> {
     return request(`/api/clusters/${clusterId}/scans`, scansResponseSchema).then((r) => r.scans);
   },
+  getArtifactKindCounts(clusterId: string): Promise<ArtifactKindCounts> {
+    return request(`/api/clusters/${clusterId}/artifact-kinds`, artifactKindCountsSchema);
+  },
   listArtifacts(filters: ArtifactFilters = {}): Promise<ArtifactsPage> {
     const params = new URLSearchParams();
     if (filters.cluster) params.set("cluster", filters.cluster);
     if (filters.kind) params.set("kind", filters.kind);
     if (filters.namespace) params.set("namespace", filters.namespace);
     if (filters.class) params.set("class", filters.class);
+    if (filters.resolve_status) params.set("resolve_status", filters.resolve_status);
     if (filters.q) params.set("q", filters.q);
     if (filters.cursor) params.set("cursor", String(filters.cursor));
     const qs = params.toString();
@@ -277,6 +336,22 @@ export const api = {
   },
   getArtifact(id: string): Promise<ArtifactDetail> {
     return request(`/api/artifacts/${id}`, artifactDetailSchema);
+  },
+  listRegistryAuth(clusterId: string): Promise<RegistryAuthEntry[]> {
+    return request(`/api/clusters/${clusterId}/registry-auth`, registryAuthResponseSchema).then(
+      (r) => r.registry_auth,
+    );
+  },
+  listClusterSecrets(clusterId: string): Promise<ClusterSecret[]> {
+    return request(`/api/clusters/${clusterId}/cluster-secrets`, clusterSecretsResponseSchema).then(
+      (r) => r.secrets,
+    );
+  },
+  putRegistryAuth(clusterId: string, input: PutRegistryAuthInput): Promise<void> {
+    return request(`/api/clusters/${clusterId}/registry-auth`, z.object({ ok: z.boolean() }), {
+      method: "PUT",
+      body: input,
+    }).then(() => undefined);
   },
 };
 

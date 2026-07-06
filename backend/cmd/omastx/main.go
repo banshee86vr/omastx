@@ -18,6 +18,7 @@ import (
 	"github.com/banshee86vr/omastx/backend/internal/api"
 	"github.com/banshee86vr/omastx/backend/internal/cluster"
 	"github.com/banshee86vr/omastx/backend/internal/config"
+	"github.com/banshee86vr/omastx/backend/internal/registryauth"
 	"github.com/banshee86vr/omastx/backend/internal/scan"
 	"github.com/banshee86vr/omastx/backend/internal/store"
 	"github.com/banshee86vr/omastx/backend/internal/store/db"
@@ -63,11 +64,12 @@ func run(logger *slog.Logger, migrateOnly bool) error {
 	}
 
 	scanner := scan.NewManager(scan.Config{
-		Store:     queries,
-		Providers: scan.DefaultProviders(),
-		Resolvers: scan.DefaultResolvers(queries, 0),
-		Logger:    logger,
-		MasterKey: cfg.MasterKey,
+		Store:        queries,
+		RegistryAuth: registryauth.DBStore{Q: queries, MasterKey: cfg.MasterKey},
+		Providers:    scan.DefaultProviders(),
+		Resolvers:    scan.DefaultResolvers(queries, 0),
+		Logger:       logger,
+		MasterKey:    cfg.MasterKey,
 	})
 	scheduler := scan.NewScheduler(scanner, queries, logger)
 	if err := scheduler.Reload(ctx); err != nil {
@@ -75,9 +77,14 @@ func run(logger *slog.Logger, migrateOnly bool) error {
 	}
 	defer scheduler.Stop()
 
+	if cfg.DevMode {
+		logger.Warn("OMASTX_DEV is enabled — using dev defaults and passwordless sign-in; never set this in production")
+	}
 	apiServer := api.NewServer(queries, logger, api.Options{
 		SecureCookies: cfg.SecureCookies,
 		MasterKey:     cfg.MasterKey,
+		DevMode:       cfg.DevMode,
+		DevLoginEmail: cfg.AdminEmail,
 		Connector:     &cluster.KubeConnector{},
 		Scanner:       scanner,
 		Scheduler:     scheduler,

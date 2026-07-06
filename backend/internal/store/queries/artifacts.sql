@@ -17,11 +17,11 @@ SELECT a.id, a.cluster_id, c.name AS cluster_name, a.kind, a.namespace,
        o.latest_version,
        COALESCE(o.drift_class, 'unknown')::text AS drift_class,
        COALESCE(o.drift_score, 0)::double precision AS drift_score,
-       o.releases_behind
+       o.releases_behind, o.confidence
 FROM artifacts a
 JOIN clusters c ON c.id = a.cluster_id
 LEFT JOIN LATERAL (
-    SELECT ob.latest_version, ob.drift_class, ob.drift_score, ob.releases_behind
+    SELECT ob.latest_version, ob.drift_class, ob.drift_score, ob.releases_behind, ob.confidence
     FROM observations ob
     JOIN scans s ON s.id = ob.scan_id
     WHERE ob.artifact_id = a.id
@@ -32,6 +32,8 @@ WHERE (sqlc.narg('cluster')::uuid IS NULL OR a.cluster_id = sqlc.narg('cluster')
   AND (sqlc.narg('kind')::text IS NULL OR a.kind = sqlc.narg('kind'))
   AND (sqlc.narg('namespace')::text IS NULL OR a.namespace = sqlc.narg('namespace'))
   AND (sqlc.narg('class')::text IS NULL OR o.drift_class = sqlc.narg('class'))
+  AND (sqlc.narg('resolve_status')::text IS NULL
+       OR COALESCE(a.source_meta->>'resolve_status', '') = sqlc.narg('resolve_status'))
   AND (sqlc.narg('q')::text IS NULL OR a.identity ILIKE '%' || sqlc.narg('q') || '%')
 ORDER BY COALESCE(o.drift_score, -1) DESC, a.identity ASC, a.id ASC
 OFFSET sqlc.arg('off')
@@ -56,3 +58,29 @@ LEFT JOIN LATERAL (
     LIMIT 1
 ) o ON true
 WHERE a.id = $1;
+
+-- name: CountObservationKindsForLatestScan :many
+SELECT a.kind, COUNT(*)::int AS count
+FROM observations o
+JOIN artifacts a ON a.id = o.artifact_id
+WHERE o.scan_id = (
+    SELECT s.id
+    FROM scans s
+    WHERE s.cluster_id = $1 AND s.status = 'done'
+    ORDER BY s.finished_at DESC NULLS LAST, s.started_at DESC
+    LIMIT 1
+)
+GROUP BY a.kind;
+
+-- name: CountAuthRequiredForLatestScan :one
+SELECT COUNT(*)::int AS count
+FROM observations o
+JOIN artifacts a ON a.id = o.artifact_id
+WHERE o.scan_id = (
+    SELECT s.id
+    FROM scans s
+    WHERE s.cluster_id = $1 AND s.status = 'done'
+    ORDER BY s.finished_at DESC NULLS LAST, s.started_at DESC
+    LIMIT 1
+)
+AND COALESCE(a.source_meta->>'resolve_status', '') = 'auth_required';

@@ -248,6 +248,46 @@ func (s *Server) handleGetCluster(w http.ResponseWriter, r *http.Request) {
 		row.Status, row.ScheduleCron, row.CreatedAt, row.LastScanAt, row.RbacReport))
 }
 
+func (s *Server) handleArtifactKindCounts(w http.ResponseWriter, r *http.Request) {
+	id, ok := clusterID(w, r)
+	if !ok {
+		return
+	}
+	if _, err := s.store.GetCluster(r.Context(), id); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeClusterNotFound(w)
+			return
+		}
+		s.internalError(w, err)
+		return
+	}
+	rows, err := s.store.CountObservationKindsForLatestScan(r.Context(), id)
+	if err != nil {
+		s.internalError(w, err)
+		return
+	}
+	authRequired, err := s.store.CountAuthRequiredForLatestScan(r.Context(), id)
+	if err != nil {
+		s.internalError(w, err)
+		return
+	}
+	var images, helm int
+	for _, row := range rows {
+		switch row.Kind {
+		case "image":
+			images = int(row.Count)
+		case "helm":
+			helm = int(row.Count)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"images":        images,
+		"helm":          helm,
+		"total":         images + helm,
+		"auth_required": int(authRequired),
+	})
+}
+
 func (s *Server) handleDeleteCluster(w http.ResponseWriter, r *http.Request) {
 	id, ok := clusterID(w, r)
 	if !ok {

@@ -56,6 +56,31 @@ func TestParseImage(t *testing.T) {
 	}
 }
 
+func TestDiscoverImagePullSecrets(t *testing.T) {
+	cs := fake.NewSimpleClientset(
+		&appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{Name: "app", Namespace: "prod"},
+			Spec: appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					ImagePullSecrets: []corev1.LocalObjectReference{{Name: "regcred"}},
+					Containers:       []corev1.Container{{Name: "c", Image: "ghcr.io/org/app:1.0"}},
+				},
+			}},
+		},
+	)
+	found, err := New().Discover(context.Background(), fakeClient{cs: cs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != 1 {
+		t.Fatalf("got %d artifacts", len(found))
+	}
+	secrets, ok := found[0].SourceMeta["image_pull_secrets"].([]string)
+	if !ok || len(secrets) != 1 || secrets[0] != "regcred" {
+		t.Errorf("image_pull_secrets = %v", found[0].SourceMeta["image_pull_secrets"])
+	}
+}
+
 func TestDiscover(t *testing.T) {
 	cs := fake.NewSimpleClientset(
 		&appsv1.Deployment{

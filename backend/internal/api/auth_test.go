@@ -123,6 +123,17 @@ func (f *fakeStore) GetCluster(_ context.Context, id uuid.UUID) (db.GetClusterRo
 	return c, nil
 }
 
+func (f *fakeStore) GetClusterConnection(_ context.Context, id uuid.UUID) (db.GetClusterConnectionRow, error) {
+	c, ok := f.clusters[id]
+	if !ok {
+		return db.GetClusterConnectionRow{}, pgx.ErrNoRows
+	}
+	return db.GetClusterConnectionRow{
+		ID:   c.ID,
+		Name: c.Name,
+	}, nil
+}
+
 func (f *fakeStore) DeleteCluster(_ context.Context, id uuid.UUID) (int64, error) {
 	if _, ok := f.clusters[id]; !ok {
 		return 0, nil
@@ -146,12 +157,32 @@ func (f *fakeStore) ListArtifacts(_ context.Context, _ db.ListArtifactsParams) (
 	return nil, nil
 }
 
+func (f *fakeStore) CountObservationKindsForLatestScan(_ context.Context, _ uuid.UUID) ([]db.CountObservationKindsForLatestScanRow, error) {
+	return nil, nil
+}
+
+func (f *fakeStore) CountAuthRequiredForLatestScan(_ context.Context, _ uuid.UUID) (int32, error) {
+	return 0, nil
+}
+
 func (f *fakeStore) GetArtifact(_ context.Context, _ uuid.UUID) (db.GetArtifactRow, error) {
 	return db.GetArtifactRow{}, pgx.ErrNoRows
 }
 
 func (f *fakeStore) GetLatestCache(_ context.Context, _ db.GetLatestCacheParams) (db.GetLatestCacheRow, error) {
 	return db.GetLatestCacheRow{}, pgx.ErrNoRows
+}
+
+func (f *fakeStore) ListRegistryAuth(_ context.Context, _ uuid.UUID) ([]db.ListRegistryAuthRow, error) {
+	return nil, nil
+}
+
+func (f *fakeStore) UpsertRegistryAuth(_ context.Context, _ db.UpsertRegistryAuthParams) (uuid.UUID, error) {
+	return uuid.New(), nil
+}
+
+func (f *fakeStore) DeleteRegistryAuth(_ context.Context, _ db.DeleteRegistryAuthParams) error {
+	return nil
 }
 
 var testMasterKey = bytes.Repeat([]byte{7}, 32)
@@ -164,6 +195,14 @@ func newTestServerWithConnector(store Store, connector cluster.Connector) http.H
 	return NewServer(store, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{
 		MasterKey: testMasterKey,
 		Connector: connector,
+	}).Router()
+}
+
+func newDevTestServer(store Store, email string) http.Handler {
+	return NewServer(store, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{
+		MasterKey:     testMasterKey,
+		DevMode:       true,
+		DevLoginEmail: email,
 	}).Router()
 }
 
@@ -314,6 +353,33 @@ func TestExpiredSessionRejected(t *testing.T) {
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("status = %d, want 401", rec.Code)
 	}
+}
+
+func TestDevLogin(t *testing.T) {
+	t.Run("dev mode issues session without password", func(t *testing.T) {
+		store := newFakeStore()
+		store.addUser("dev@localhost")
+		h := newDevTestServer(store, "dev@localhost")
+
+		rec := doJSON(t, h, http.MethodPost, "/api/auth/dev-login", "", nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("dev-login: %d %s", rec.Code, rec.Body)
+		}
+		if findSessionCookie(rec) == nil {
+			t.Fatal("session cookie not set")
+		}
+	})
+
+	t.Run("disabled outside dev mode", func(t *testing.T) {
+		store := newFakeStore()
+		store.addUser("dev@localhost")
+		h := newTestServer(store)
+
+		rec := doJSON(t, h, http.MethodPost, "/api/auth/dev-login", "", nil)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404", rec.Code)
+		}
+	})
 }
 
 func findSessionCookie(rec *httptest.ResponseRecorder) *http.Cookie {

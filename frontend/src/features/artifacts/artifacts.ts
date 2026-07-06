@@ -34,3 +34,14 @@ export function driftTone(cls: DriftClass): TagTone {
       return "fathom";
   }
 }
+
+/** Below this upstream-match confidence the UI shows "unverified match" (SPEC §2.2). */
+export const LOW_CONFIDENCE_THRESHOLD = 0.6;
+
+export function isUnverifiedMatch(confidence: number | null | undefined): boolean {
+  return confidence != null && confidence > 0 && confidence < LOW_CONFIDENCE_THRESHOLD;
+}
+
+export function kindLabel(kind: string): string {
+  return kind === "helm" ? "chart" : kind;
+}

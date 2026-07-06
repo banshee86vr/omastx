@@ -50,6 +50,25 @@ func (c dbCache) PutTags(ctx context.Context, identity, kind, latest string, tag
 	})
 }
 
+// VersionCache is the shared latest_cache surface for all version resolvers.
+type VersionCache interface {
+	GetVersions(ctx context.Context, identity, kind string) (versions []string, fresh bool, err error)
+	PutVersions(ctx context.Context, identity, kind, latest string, versions []string, ttl time.Duration) error
+}
+
+func (c dbCache) GetVersions(ctx context.Context, identity, kind string) ([]string, bool, error) {
+	return c.GetTags(ctx, identity, kind)
+}
+
+func (c dbCache) PutVersions(ctx context.Context, identity, kind, latest string, versions []string, ttl time.Duration) error {
+	return c.PutTags(ctx, identity, kind, latest, versions, ttl)
+}
+
+// NewVersionCache returns a Postgres-backed resolver cache (latest_cache table).
+func NewVersionCache(q *db.Queries) VersionCache {
+	return dbCache{q: q}
+}
+
 func pgText(s string) pgtype.Text {
 	if s == "" {
 		return pgtype.Text{}

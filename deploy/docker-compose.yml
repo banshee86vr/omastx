@@ -20,10 +20,8 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile.backend
     environment:
+      OMASTX_DEV: "true"
       DATABASE_URL: postgres://omastx:${POSTGRES_PASSWORD:-omastx}@postgres:5432/omastx?sslmode=disable
-      OMASTX_MASTER_KEY: ${OMASTX_MASTER_KEY:?set OMASTX_MASTER_KEY in deploy/.env (openssl rand -hex 32)}
-      OMASTX_ADMIN_EMAIL: ${OMASTX_ADMIN_EMAIL:-admin@example.com}
-      OMASTX_ADMIN_PASSWORD: ${OMASTX_ADMIN_PASSWORD:?set OMASTX_ADMIN_PASSWORD in deploy/.env}
     depends_on:
       postgres:
         condition: service_healthy
@@ -32,6 +30,8 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.frontend
+      args:
+        VITE_OMASTX_DEV: "true"
     ports:
       - "8080:8080"
     depends_on:

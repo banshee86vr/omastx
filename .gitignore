@@ -1,5 +1,6 @@
 # Go
 backend/bin/
+backend/tmp/
 backend/coverage.out
 
 # Node

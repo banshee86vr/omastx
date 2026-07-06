@@ -12,6 +12,66 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countAuthRequiredForLatestScan = `-- name: CountAuthRequiredForLatestScan :one
+SELECT COUNT(*)::int AS count
+FROM observations o
+JOIN artifacts a ON a.id = o.artifact_id
+WHERE o.scan_id = (
+    SELECT s.id
+    FROM scans s
+    WHERE s.cluster_id = $1 AND s.status = 'done'
+    ORDER BY s.finished_at DESC NULLS LAST, s.started_at DESC
+    LIMIT 1
+)
+AND COALESCE(a.source_meta->>'resolve_status', '') = 'auth_required'
+`
+
+func (q *Queries) CountAuthRequiredForLatestScan(ctx context.Context, clusterID uuid.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, countAuthRequiredForLatestScan, clusterID)
+	var count int32
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countObservationKindsForLatestScan = `-- name: CountObservationKindsForLatestScan :many
+SELECT a.kind, COUNT(*)::int AS count
+FROM observations o
+JOIN artifacts a ON a.id = o.artifact_id
+WHERE o.scan_id = (
+    SELECT s.id
+    FROM scans s
+    WHERE s.cluster_id = $1 AND s.status = 'done'
+    ORDER BY s.finished_at DESC NULLS LAST, s.started_at DESC
+    LIMIT 1
+)
+GROUP BY a.kind
+`
+
+type CountObservationKindsForLatestScanRow struct {
+	Kind  string `json:"kind"`
+	Count int32  `json:"count"`
+}
+
+func (q *Queries) CountObservationKindsForLatestScan(ctx context.Context, clusterID uuid.UUID) ([]CountObservationKindsForLatestScanRow, error) {
+	rows, err := q.db.Query(ctx, countObservationKindsForLatestScan, clusterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountObservationKindsForLatestScanRow
+	for rows.Next() {
+		var i CountObservationKindsForLatestScanRow
+		if err := rows.Scan(&i.Kind, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getArtifact = `-- name: GetArtifact :one
 SELECT a.id, a.cluster_id, c.name AS cluster_name, a.kind, a.namespace,
        a.owner_kind, a.owner_name, a.identity, a.installed_version,
@@ -84,11 +144,11 @@ SELECT a.id, a.cluster_id, c.name AS cluster_name, a.kind, a.namespace,
        o.latest_version,
        COALESCE(o.drift_class, 'unknown')::text AS drift_class,
        COALESCE(o.drift_score, 0)::double precision AS drift_score,
-       o.releases_behind
+       o.releases_behind, o.confidence
 FROM artifacts a
 JOIN clusters c ON c.id = a.cluster_id
 LEFT JOIN LATERAL (
-    SELECT ob.latest_version, ob.drift_class, ob.drift_score, ob.releases_behind
+    SELECT ob.latest_version, ob.drift_class, ob.drift_score, ob.releases_behind, ob.confidence
     FROM observations ob
     JOIN scans s ON s.id = ob.scan_id
     WHERE ob.artifact_id = a.id
@@ -99,20 +159,23 @@ WHERE ($1::uuid IS NULL OR a.cluster_id = $1)
   AND ($2::text IS NULL OR a.kind = $2)
   AND ($3::text IS NULL OR a.namespace = $3)
   AND ($4::text IS NULL OR o.drift_class = $4)
-  AND ($5::text IS NULL OR a.identity ILIKE '%' || $5 || '%')
+  AND ($5::text IS NULL
+       OR COALESCE(a.source_meta->>'resolve_status', '') = $5)
+  AND ($6::text IS NULL OR a.identity ILIKE '%' || $6 || '%')
 ORDER BY COALESCE(o.drift_score, -1) DESC, a.identity ASC, a.id ASC
-OFFSET $6
-LIMIT $7
+OFFSET $7
+LIMIT $8
 `
 
 type ListArtifactsParams struct {
-	Cluster   pgtype.UUID `json:"cluster"`
-	Kind      pgtype.Text `json:"kind"`
-	Namespace pgtype.Text `json:"namespace"`
-	Class     pgtype.Text `json:"class"`
-	Q         pgtype.Text `json:"q"`
-	Off       int32       `json:"off"`
-	Lim       int32       `json:"lim"`
+	Cluster       pgtype.UUID `json:"cluster"`
+	Kind          pgtype.Text `json:"kind"`
+	Namespace     pgtype.Text `json:"namespace"`
+	Class         pgtype.Text `json:"class"`
+	ResolveStatus pgtype.Text `json:"resolve_status"`
+	Q             pgtype.Text `json:"q"`
+	Off           int32       `json:"off"`
+	Lim           int32       `json:"lim"`
 }
 
 type ListArtifactsRow struct {
@@ -130,6 +193,7 @@ type ListArtifactsRow struct {
 	DriftClass       string             `json:"drift_class"`
 	DriftScore       float64            `json:"drift_score"`
 	ReleasesBehind   pgtype.Int4        `json:"releases_behind"`
+	Confidence       pgtype.Float4      `json:"confidence"`
 }
 
 // ListArtifacts returns each artifact with its most recent observation (the drift
@@ -142,6 +206,7 @@ func (q *Queries) ListArtifacts(ctx context.Context, arg ListArtifactsParams) ([
 		arg.Kind,
 		arg.Namespace,
 		arg.Class,
+		arg.ResolveStatus,
 		arg.Q,
 		arg.Off,
 		arg.Lim,
@@ -168,6 +233,7 @@ func (q *Queries) ListArtifacts(ctx context.Context, arg ListArtifactsParams) ([
 			&i.DriftClass,
 			&i.DriftScore,
 			&i.ReleasesBehind,
+			&i.Confidence,
 		); err != nil {
 			return nil, err
 		}

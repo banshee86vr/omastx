@@ -10,30 +10,64 @@ See [SPEC.md](SPEC.md) for the full product and engineering specification, and
 
 ## Local quickstart (docker compose)
 
-Requirements: Docker with the compose plugin.
+Requirements: Docker with the compose plugin. Rebuilds images on every `make dev` — best for
+CI-like smoke tests, not day-to-day coding (see **Native dev** below).
 
 ```bash
-cp deploy/.env.example deploy/.env   # then edit: set a real 32-byte master key
-docker compose -f deploy/docker-compose.yml up --build
+make dev   # or: docker compose -f deploy/docker-compose.yml up --build
 ```
 
-Open http://localhost:8080 and sign in with the admin credentials from `deploy/.env`.
+Open http://localhost:8080 — you are signed in automatically (no credentials or `.env` file needed).
 
-## Local development (without containers)
+## Native dev (recommended for daily work)
 
-Requirements: Go 1.22+, Node 20+, a Postgres you can reach.
+Requirements: Go 1.26+, Node 20+, Docker (Postgres only — no backend/frontend containers).
+
+One command starts Postgres, the API, and Vite with hot reload:
 
 ```bash
-# backend (applies migrations automatically at startup)
-export DATABASE_URL=postgres://omastx:omastx@localhost:5432/omastx?sslmode=disable
-export OMASTX_MASTER_KEY=$(openssl rand -hex 16)   # 32 bytes hex-encoded
-export OMASTX_ADMIN_EMAIL=admin@example.com
-export OMASTX_ADMIN_PASSWORD=change-me
-cd backend && go run ./cmd/omastx
+make dev-local
+```
 
-# frontend (Vite dev server proxies /api to :8484)
+Open http://localhost:5173 — Vite proxies `/api` to the backend on `:8484` and signs you in automatically.
+
+Optional: install [Air](https://github.com/air-verse/air) for automatic Go reload on save
+(`go install github.com/air-verse/air@latest`). Without it, restart the backend manually
+after Go changes.
+
+Split terminals instead of `make dev-local`:
+
+```bash
+make dev-db          # Postgres only (once per session)
+make dev-backend     # terminal 1 — API on :8484
+make dev-frontend    # terminal 2 — UI on :5173
+make dev-db-down     # stop Postgres when done
+```
+
+Run tests without the full stack:
+
+```bash
+make dev-db          # if you need a real DB for integration tests
+make test
+# Or point integration tests at your DB:
+export OMASTX_TEST_DATABASE_URL=postgres://omastx:omastx@localhost:5432/omastx?sslmode=disable
+cd backend && go test ./internal/api/ -count=1
+```
+
+## Local development (manual env)
+
+Same as native dev without Make — useful if you prefer explicit exports:
+
+```bash
+export OMASTX_DEV=true
+export DATABASE_URL=postgres://omastx:omastx@localhost:5432/omastx?sslmode=disable
+make dev-db
+cd backend && go run ./cmd/omastx
+# other terminal:
 cd frontend && npm install && npm run dev
 ```
+
+Optional `deploy/.env` overrides dev defaults (see `deploy/.env.example`).
 
 ## Kubernetes (Helm)
 
@@ -67,5 +101,6 @@ docs/       spec support docs, implementation plan (docs/plan)
 
 ## Make targets
 
-`make dev` (compose stack) · `make test` · `make lint` · `make build` · `make migrate` ·
+`make dev-local` (native, hot reload) · `make dev` (full Docker stack) · `make dev-db` ·
+`make test` · `make lint` · `make build` · `make migrate` ·
 `make sqlc` · `make docker-build` · `make helm-lint` · `make helm-template`

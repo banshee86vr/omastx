@@ -113,10 +113,34 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.limiter.reset(key)
 	}
 
+	s.issueSession(w, r, user)
+}
+
+func (s *Server) handleDevLogin(w http.ResponseWriter, r *http.Request) {
+	if !s.devMode {
+		writeProblem(w, http.StatusNotFound, "not_found", "Not found",
+			"This API route doesn't exist. Check the path and try again.")
+		return
+	}
+	email := strings.ToLower(strings.TrimSpace(s.devLoginEmail))
+	user, err := s.store.GetUserByEmail(r.Context(), email)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeProblem(w, http.StatusServiceUnavailable, "dev_user_missing", "Dev sign-in unavailable",
+				"The dev admin user hasn't been created yet. Restart the backend after migrations finish.")
+			return
+		}
+		s.internalError(w, err)
+		return
+	}
+	s.issueSession(w, r, user)
+}
+
+func (s *Server) issueSession(w http.ResponseWriter, r *http.Request, user db.User) {
 	token := randomToken()
 	csrf := randomToken()
 	expires := time.Now().Add(sessionTTL)
-	err = s.store.CreateSession(r.Context(), db.CreateSessionParams{
+	err := s.store.CreateSession(r.Context(), db.CreateSessionParams{
 		TokenHash: hashToken(token),
 		UserID:    user.ID,
 		CsrfToken: csrf,

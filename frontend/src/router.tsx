@@ -14,10 +14,13 @@ import { ClusterDetailPage } from "./features/clusters/ClusterDetailPage.tsx";
 import { ArtifactsPage } from "./features/artifacts/ArtifactsPage.tsx";
 import { driftClassSchema, type DriftClass } from "./lib/api.ts";
 import { meQuery } from "./features/auth/auth.ts";
+import { tryAutoDevLogin } from "./features/auth/devLogin.ts";
 
 export interface ArtifactsSearch {
   cluster?: string | undefined;
+  kind?: string | undefined;
   class?: DriftClass | undefined;
+  resolve_status?: string | undefined;
   q?: string | undefined;
 }
 
@@ -43,6 +46,9 @@ const authedRoute = createRoute({
     try {
       await context.queryClient.ensureQueryData(meQuery);
     } catch {
+      if (await tryAutoDevLogin(context.queryClient)) {
+        return;
+      }
       throw redirect({ to: "/signin" });
     }
   },
@@ -72,9 +78,15 @@ const artifactsRoute = createRoute({
   path: "/artifacts",
   validateSearch: (search: Record<string, unknown>): ArtifactsSearch => {
     const cls = driftClassSchema.safeParse(search.class);
+    const kind = typeof search.kind === "string" && (search.kind === "image" || search.kind === "helm")
+      ? search.kind
+      : undefined;
     return {
       cluster: typeof search.cluster === "string" ? search.cluster : undefined,
+      kind,
       class: cls.success ? cls.data : undefined,
+      resolve_status:
+        search.resolve_status === "auth_required" ? "auth_required" : undefined,
       q: typeof search.q === "string" ? search.q : undefined,
     };
   },

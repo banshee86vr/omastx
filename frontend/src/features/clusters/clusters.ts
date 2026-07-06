@@ -22,3 +22,19 @@ export function scansQuery(clusterId: string) {
     staleTime: 15 * 1000,
   });
 }
+
+export function artifactKindCountsQuery(clusterId: string) {
+  return queryOptions({
+    queryKey: ["clusters", clusterId, "artifact-kinds"],
+    queryFn: () => api.getArtifactKindCounts(clusterId),
+    staleTime: 15 * 1000,
+  });
+}
+
+export function clusterSecretsQuery(clusterId: string) {
+  return queryOptions({
+    queryKey: ["clusters", clusterId, "cluster-secrets"],
+    queryFn: () => api.listClusterSecrets(clusterId),
+    staleTime: 60 * 1000,
+  });
+}

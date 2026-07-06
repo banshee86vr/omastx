@@ -2,6 +2,8 @@
 #   docker build -f deploy/Dockerfile.frontend .
 FROM node:24-alpine AS build
 WORKDIR /src
+ARG VITE_OMASTX_DEV=false
+ENV VITE_OMASTX_DEV=$VITE_OMASTX_DEV
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./

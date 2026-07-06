@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-containerregistry/pkg/authn"
+
 	"github.com/banshee86vr/omastx/backend/internal/core"
 )
 
@@ -14,7 +16,7 @@ type fakeLister struct {
 	err   error
 }
 
-func (f *fakeLister) List(_ context.Context, _ string) ([]string, error) {
+func (f *fakeLister) List(_ context.Context, _ string, _ authn.Authenticator) ([]string, error) {
 	f.calls++
 	return f.tags, f.err
 }

@@ -32,6 +32,7 @@ type artifactDTO struct {
 	DriftClass     string    `json:"drift_class"`
 	DriftScore     float64   `json:"drift_score"`
 	ReleasesBehind *int      `json:"releases_behind"`
+	Confidence     *float32  `json:"confidence"`
 	LastSeen       time.Time `json:"last_seen"`
 }
 
@@ -55,11 +56,12 @@ func (s *Server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
 	params := db.ListArtifactsParams{
-		Kind:      optionalText(q.Get("kind")),
-		Namespace: optionalText(q.Get("namespace")),
-		Class:     optionalText(q.Get("class")),
-		Q:         optionalText(q.Get("q")),
-		Lim:       artifactPageSize + 1,
+		Kind:           optionalText(q.Get("kind")),
+		Namespace:      optionalText(q.Get("namespace")),
+		Class:          optionalText(q.Get("class")),
+		ResolveStatus:  optionalText(q.Get("resolve_status")),
+		Q:              optionalText(q.Get("q")),
+		Lim:            artifactPageSize + 1,
 	}
 	if c := q.Get("cluster"); c != "" {
 		id, err := uuid.Parse(c)
@@ -111,6 +113,7 @@ func (s *Server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
 			DriftClass:     row.DriftClass,
 			DriftScore:     row.DriftScore,
 			ReleasesBehind: int4Ptr(row.ReleasesBehind),
+			Confidence:     float4Ptr(row.Confidence),
 			LastSeen:       row.LastSeen.Time,
 		})
 	}
@@ -147,6 +150,7 @@ func (s *Server) handleGetArtifact(w http.ResponseWriter, r *http.Request) {
 			DriftClass:     row.DriftClass,
 			DriftScore:     row.DriftScore,
 			ReleasesBehind: int4Ptr(row.ReleasesBehind),
+			Confidence:     float4Ptr(row.Confidence),
 			LastSeen:       row.LastSeen.Time,
 		},
 		FirstSeen:  row.FirstSeen.Time,
@@ -200,5 +204,13 @@ func int4Ptr(n pgtype.Int4) *int {
 		return nil
 	}
 	v := int(n.Int32)
+	return &v
+}
+
+func float4Ptr(n pgtype.Float4) *float32 {
+	if !n.Valid {
+		return nil
+	}
+	v := n.Float32
 	return &v
 }

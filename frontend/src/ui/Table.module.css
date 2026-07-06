@@ -32,3 +32,7 @@
 .table tbody tr:hover {
   background: var(--shoal);
 }
+
+.table :is(th, td).alignRight {
+  text-align: right;
+}
