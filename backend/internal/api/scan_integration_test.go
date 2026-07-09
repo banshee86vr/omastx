@@ -229,3 +229,271 @@ func TestScanFlowIntegration(t *testing.T) {
 		}
 	}
 }
+
+// TestListRegistryTargetsIntegration verifies GET /clusters/{id}/registry-targets
+// returns registry/chart-repo targets for artifacts with unknown drift.
+func TestListRegistryTargetsIntegration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("short mode")
+	}
+	databaseURL := os.Getenv("OMASTX_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		databaseURL = startPostgres(t)
+	}
+	if err := store.Migrate(databaseURL); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	ctx := context.Background()
+	pool, err := store.NewPool(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("pool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	queries := db.New(pool)
+
+	h := NewServer(queries, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{
+		MasterKey: testMasterKey,
+		Connector: &fakeConnector{result: allowAllCheckResult()},
+	}).Router()
+
+	if _, err := queries.CreateUser(ctx, db.CreateUserParams{
+		Email: "targets@example.com", PasswordHash: mustHash(t, "targets-pass"), Role: "admin",
+	}); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	authed := func(r *http.Request) {
+		login := doJSON(t, h, http.MethodPost, "/api/auth/login",
+			`{"email":"targets@example.com","password":"targets-pass"}`, nil)
+		var a authResponse
+		if err := json.Unmarshal(login.Body.Bytes(), &a); err != nil {
+			t.Fatal(err)
+		}
+		r.AddCookie(findSessionCookie(login))
+		r.Header.Set(csrfHeader, a.CSRFToken)
+	}
+
+	created := doJSON(t, h, http.MethodPost, "/api/clusters",
+		kubeconfigJSON(`,"name":"targets-cluster","context":"prod-eu"`), authed)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create cluster: %d %s", created.Code, created.Body)
+	}
+	var clusterDto clusterDTO
+	if err := json.Unmarshal(created.Body.Bytes(), &clusterDto); err != nil {
+		t.Fatal(err)
+	}
+	clusterID, err := uuid.Parse(clusterDto.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	scanRow, err := queries.CreateScan(ctx, clusterID)
+	if err != nil {
+		t.Fatalf("create scan: %v", err)
+	}
+
+	imageMeta, _ := json.Marshal(map[string]any{"registry": "ghcr.io", "image": "ghcr.io/acme/app:1.0"})
+	imageID, err := queries.UpsertArtifact(ctx, db.UpsertArtifactParams{
+		ClusterID: clusterID, Kind: "image", Namespace: "prod",
+		OwnerKind: "Deployment", OwnerName: "app", Identity: "ghcr.io/acme/app",
+		InstalledVersion: "1.0", SourceMeta: imageMeta,
+	})
+	if err != nil {
+		t.Fatalf("upsert image artifact: %v", err)
+	}
+	if err := queries.InsertObservation(ctx, db.InsertObservationParams{
+		ScanID: scanRow.ID, ArtifactID: imageID, InstalledVersion: "1.0",
+		DriftClass: "unknown", DriftScore: 0,
+	}); err != nil {
+		t.Fatalf("insert image observation: %v", err)
+	}
+
+	helmMeta, _ := json.Marshal(map[string]any{
+		"release": "my-chart", "chart_repo": "https://charts.example.com",
+	})
+	helmID, err := queries.UpsertArtifact(ctx, db.UpsertArtifactParams{
+		ClusterID: clusterID, Kind: "helm", Namespace: "prod",
+		OwnerKind: "HelmRelease", OwnerName: "my-chart", Identity: "my-chart",
+		InstalledVersion: "2.0.0", SourceMeta: helmMeta,
+	})
+	if err != nil {
+		t.Fatalf("upsert helm artifact: %v", err)
+	}
+	if err := queries.InsertObservation(ctx, db.InsertObservationParams{
+		ScanID: scanRow.ID, ArtifactID: helmID, InstalledVersion: "2.0.0",
+		DriftClass: "unknown", DriftScore: 0,
+	}); err != nil {
+		t.Fatalf("insert helm observation: %v", err)
+	}
+	if err := queries.FinishScan(ctx, db.FinishScanParams{
+		ID: scanRow.ID, Status: "done",
+	}); err != nil {
+		t.Fatalf("finish scan: %v", err)
+	}
+
+	resp := doJSON(t, h, http.MethodGet, "/api/clusters/"+clusterDto.ID+"/registry-targets", "", authed)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("registry targets: %d %s", resp.Code, resp.Body)
+	}
+	var targetsResp struct {
+		Targets []struct {
+			Kind   string `json:"kind"`
+			Target string `json:"target"`
+		} `json:"targets"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &targetsResp); err != nil {
+		t.Fatal(err)
+	}
+	if len(targetsResp.Targets) != 2 {
+		t.Fatalf("got %d targets, want 2: %+v", len(targetsResp.Targets), targetsResp.Targets)
+	}
+	found := map[string]string{}
+	for _, row := range targetsResp.Targets {
+		found[row.Kind] = row.Target
+	}
+	if found["image"] != "ghcr.io" {
+		t.Errorf("image target = %q, want ghcr.io", found["image"])
+	}
+	if found["helm"] != "https://charts.example.com" {
+		t.Errorf("helm target = %q, want https://charts.example.com", found["helm"])
+	}
+}
+
+// TestStaleArtifactsPrunedAfterRescan verifies artifacts removed from the cluster
+// disappear from the ledger after the next successful scan.
+func TestStaleArtifactsPrunedAfterRescan(t *testing.T) {
+	if testing.Short() {
+		t.Skip("short mode")
+	}
+	databaseURL := os.Getenv("OMASTX_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		databaseURL = startPostgres(t)
+	}
+	if err := store.Migrate(databaseURL); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	ctx := context.Background()
+	pool, err := store.NewPool(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("pool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	queries := db.New(pool)
+
+	withNginx := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
+		Spec: appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{
+			Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "app", Image: "nginx:1.25"}}},
+		}},
+	})
+	emptyCluster := fake.NewSimpleClientset()
+	var currentCS kubernetes.Interface = withNginx
+
+	lister := apiFakeLister{tags: []string{"1.25.0", "1.26.0"}}
+	resolver := oci.New(scan.NewCache(queries), oci.WithLister(lister), oci.WithRate(1000, 100))
+	mgr := scan.NewManager(scan.Config{
+		Store:     queries,
+		Providers: scan.DefaultProviders(),
+		Resolvers: []core.VersionResolver{resolver},
+		MasterKey: testMasterKey,
+		Hub:       scan.NewHub(),
+		ClientFactory: func([]byte, string) (kubernetes.Interface, error) {
+			return currentCS, nil
+		},
+	})
+
+	h := NewServer(queries, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{
+		MasterKey: testMasterKey,
+		Connector: &fakeConnector{result: allowAllCheckResult()},
+		Scanner:   mgr,
+	}).Router()
+
+	if _, err := queries.CreateUser(ctx, db.CreateUserParams{
+		Email: "prune@example.com", PasswordHash: mustHash(t, "prune-pass"), Role: "admin",
+	}); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	authed := func(r *http.Request) {
+		login := doJSON(t, h, http.MethodPost, "/api/auth/login",
+			`{"email":"prune@example.com","password":"prune-pass"}`, nil)
+		var a authResponse
+		if err := json.Unmarshal(login.Body.Bytes(), &a); err != nil {
+			t.Fatal(err)
+		}
+		r.AddCookie(findSessionCookie(login))
+		r.Header.Set(csrfHeader, a.CSRFToken)
+	}
+
+	created := doJSON(t, h, http.MethodPost, "/api/clusters",
+		kubeconfigJSON(`,"name":"prune-cluster","context":"prod-eu"`), authed)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create cluster: %d %s", created.Code, created.Body)
+	}
+	var clusterDto clusterDTO
+	if err := json.Unmarshal(created.Body.Bytes(), &clusterDto); err != nil {
+		t.Fatal(err)
+	}
+
+	waitScan := func() {
+		t.Helper()
+		scanResp := doJSON(t, h, http.MethodPost, "/api/clusters/"+clusterDto.ID+"/scan", "", authed)
+		if scanResp.Code != http.StatusAccepted {
+			t.Fatalf("start scan: %d %s", scanResp.Code, scanResp.Body)
+		}
+		var started struct {
+			ScanID string `json:"scan_id"`
+		}
+		if err := json.Unmarshal(scanResp.Body.Bytes(), &started); err != nil {
+			t.Fatal(err)
+		}
+		scanID, err := uuid.Parse(started.ScanID)
+		if err != nil {
+			t.Fatalf("scan id: %v", err)
+		}
+		deadline := time.Now().Add(15 * time.Second)
+		for time.Now().Before(deadline) {
+			row, err := queries.GetScan(ctx, scanID)
+			if err != nil {
+				t.Fatalf("get scan: %v", err)
+			}
+			if row.Status != "running" {
+				if row.Status != "done" {
+					t.Fatalf("scan status = %q, want done", row.Status)
+				}
+				return
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		t.Fatal("scan timed out")
+	}
+
+	waitScan()
+	list := doJSON(t, h, http.MethodGet, "/api/artifacts?cluster="+clusterDto.ID, "", authed)
+	if list.Code != http.StatusOK {
+		t.Fatalf("list artifacts: %d %s", list.Code, list.Body)
+	}
+	var first struct {
+		Artifacts []artifactDTO `json:"artifacts"`
+	}
+	if err := json.Unmarshal(list.Body.Bytes(), &first); err != nil {
+		t.Fatal(err)
+	}
+	if len(first.Artifacts) != 1 {
+		t.Fatalf("after first scan got %d artifacts, want 1", len(first.Artifacts))
+	}
+
+	currentCS = emptyCluster
+	waitScan()
+	list = doJSON(t, h, http.MethodGet, "/api/artifacts?cluster="+clusterDto.ID, "", authed)
+	if list.Code != http.StatusOK {
+		t.Fatalf("list artifacts after cleanup: %d %s", list.Code, list.Body)
+	}
+	var second struct {
+		Artifacts []artifactDTO `json:"artifacts"`
+	}
+	if err := json.Unmarshal(list.Body.Bytes(), &second); err != nil {
+		t.Fatal(err)
+	}
+	if len(second.Artifacts) != 0 {
+		t.Fatalf("after cleanup scan got %d artifacts, want 0: %+v", len(second.Artifacts), second.Artifacts)
+	}
+}

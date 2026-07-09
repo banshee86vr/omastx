@@ -9,14 +9,18 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+
+	"github.com/banshee86vr/omastx/backend/internal/registryauth"
 )
 
 // AccessibleSecret is a Kubernetes secret the connected identity can read.
 // Only metadata and data key names are returned — never secret values (SPEC §2.6).
+// Registries lists hostnames from dockerconfig auths keys when present.
 type AccessibleSecret struct {
-	Namespace string   `json:"namespace"`
-	Name      string   `json:"name"`
-	Keys      []string `json:"keys"`
+	Namespace  string   `json:"namespace"`
+	Name       string   `json:"name"`
+	Keys       []string `json:"keys"`
+	Registries []string `json:"registries,omitempty"`
 }
 
 // ListAccessibleSecrets discovers secrets visible to the kubeconfig identity.
@@ -35,13 +39,16 @@ func ListAccessibleSecrets(ctx context.Context, client kubernetes.Interface) ([]
 			if len(keys) == 0 {
 				continue
 			}
+			registries := registriesFromSecret(&sec)
 			if existing, ok := byRef[ref]; ok {
 				keys = mergeKeyNames(existing.Keys, keys)
+				registries = mergeRegistryHosts(existing.Registries, registries)
 			}
 			byRef[ref] = AccessibleSecret{
-				Namespace: sec.Namespace,
-				Name:      sec.Name,
-				Keys:      keys,
+				Namespace:  sec.Namespace,
+				Name:       sec.Name,
+				Keys:       keys,
+				Registries: registries,
 			}
 		}
 	}
@@ -91,6 +98,37 @@ func secretKeyNames(sec *corev1.Secret) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+func registriesFromSecret(sec *corev1.Secret) []string {
+	if sec == nil || len(sec.Data) == 0 {
+		return nil
+	}
+	var hosts []string
+	if raw, ok := sec.Data[corev1.DockerConfigJsonKey]; ok {
+		hosts = append(hosts, registryauth.RegistryHostsFromDockerConfigJSON(raw)...)
+	}
+	if raw, ok := sec.Data[corev1.DockerConfigKey]; ok {
+		hosts = append(hosts, registryauth.RegistryHostsFromDockerConfigJSON(raw)...)
+	}
+	return mergeRegistryHosts(nil, hosts)
+}
+
+func mergeRegistryHosts(a, b []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(a)+len(b))
+	for _, h := range append(a, b...) {
+		if h == "" {
+			continue
+		}
+		if _, dup := seen[h]; dup {
+			continue
+		}
+		seen[h] = struct{}{}
+		out = append(out, h)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func mergeKeyNames(a, b []string) []string {

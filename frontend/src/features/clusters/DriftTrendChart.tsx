@@ -118,7 +118,9 @@ function TrendChartSvg({
   };
 
   const openArtifacts = (index: number) => {
-    void navigate({ to: "/artifacts", search: { cluster: clusterId } });
+    const point = points[index];
+    if (!point) return;
+    void navigate({ to: "/artifacts", search: { cluster: clusterId, scan: point.scanId } });
     onActiveChange(index);
   };
 

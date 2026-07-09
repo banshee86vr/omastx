@@ -100,20 +100,56 @@ func (r *Resolver) CanResolve(a core.Artifact) bool {
 	return chartRepoFromMeta(a) != "" || len(r.repos) > 0
 }
 
+func reposToTry(ctx context.Context, r *Resolver) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	add := func(url string) {
+		url = strings.TrimSpace(url)
+		if url == "" {
+			return
+		}
+		key := strings.TrimSuffix(url, "/")
+		if _, dup := seen[key]; dup {
+			return
+		}
+		seen[key] = struct{}{}
+		out = append(out, url)
+	}
+	if prov := registryauth.FromContext(ctx); prov != nil {
+		for _, u := range prov.HelmRepoTargets(ctx) {
+			add(u)
+		}
+	}
+	for _, u := range r.repos {
+		add(u)
+	}
+	return out
+}
+
 func (r *Resolver) Resolve(ctx context.Context, a core.Artifact) (core.Latest, error) {
 	now := time.Now().UTC()
 	repoURL := chartRepoFromMeta(a)
+	candidateRepos := reposToTry(ctx, r)
 	if repoURL != "" {
 		return r.resolveRepo(ctx, a, repoURL, now, 1)
 	}
-	// Try default repos; pick the listing with the newest semver latest (best effort).
+	// Try configured + default repos; pick the listing with the newest semver latest.
 	var (
 		best    core.Latest
 		found   bool
 		lastErr error
 	)
-	for _, u := range r.repos {
-		latest, err := r.resolveRepo(ctx, a, u, now, 0.85)
+	for _, u := range candidateRepos {
+		confidence := float32(0.85)
+		if prov := registryauth.FromContext(ctx); prov != nil {
+			for _, cfg := range prov.HelmRepoTargets(ctx) {
+				if strings.TrimSuffix(strings.TrimSpace(cfg), "/") == strings.TrimSuffix(strings.TrimSpace(u), "/") {
+					confidence = 1
+					break
+				}
+			}
+		}
+		latest, err := r.resolveRepo(ctx, a, u, now, confidence)
 		if err != nil {
 			lastErr = err
 			continue
@@ -167,6 +203,7 @@ func (r *Resolver) resolveRepo(ctx context.Context, a core.Artifact, repoURL str
 		Candidates: sel.Candidates,
 		ResolvedAt: now,
 		Confidence: confidence,
+		RepoURL:    repoURL,
 	}
 	if sel.ReleasesBehind >= 0 {
 		behind := sel.ReleasesBehind

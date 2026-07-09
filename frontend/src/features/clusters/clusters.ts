@@ -38,3 +38,11 @@ export function clusterSecretsQuery(clusterId: string) {
     staleTime: 60 * 1000,
   });
 }
+
+export function registryTargetsQuery(clusterId: string) {
+  return queryOptions({
+    queryKey: ["clusters", clusterId, "registry-targets"],
+    queryFn: () => api.listRegistryTargets(clusterId),
+    staleTime: 15 * 1000,
+  });
+}

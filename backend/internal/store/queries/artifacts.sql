@@ -7,8 +7,16 @@ DO UPDATE SET installed_version = EXCLUDED.installed_version,
               last_seen = now()
 RETURNING id;
 
--- ListArtifacts returns each artifact with its most recent observation (the drift
--- from the latest scan that saw it). Filters are optional (NULL = no filter).
+-- name: DeleteArtifactsNotInScan :exec
+DELETE FROM artifacts a
+WHERE a.cluster_id = $1
+  AND NOT EXISTS (
+    SELECT 1 FROM observations o
+    WHERE o.scan_id = $2 AND o.artifact_id = a.id
+  );
+
+-- ListArtifacts returns artifacts from each cluster's latest completed scan.
+-- Filters are optional (NULL = no filter).
 -- Default sort is drift_score desc (SPEC §5.5). One extra row is fetched by the
 -- caller (lim = pageSize+1) to detect whether another page exists.
 -- name: ListArtifacts :many
@@ -20,14 +28,14 @@ SELECT a.id, a.cluster_id, c.name AS cluster_name, a.kind, a.namespace,
        o.releases_behind, o.confidence
 FROM artifacts a
 JOIN clusters c ON c.id = a.cluster_id
-LEFT JOIN LATERAL (
-    SELECT ob.latest_version, ob.drift_class, ob.drift_score, ob.releases_behind, ob.confidence
-    FROM observations ob
-    JOIN scans s ON s.id = ob.scan_id
-    WHERE ob.artifact_id = a.id
-    ORDER BY s.started_at DESC
+JOIN LATERAL (
+    SELECT ls.id
+    FROM scans ls
+    WHERE ls.cluster_id = a.cluster_id AND ls.status = 'done'
+    ORDER BY ls.finished_at DESC NULLS LAST, ls.started_at DESC
     LIMIT 1
-) o ON true
+) latest_scan ON true
+JOIN observations o ON o.artifact_id = a.id AND o.scan_id = latest_scan.id
 WHERE (sqlc.narg('cluster')::uuid IS NULL OR a.cluster_id = sqlc.narg('cluster'))
   AND (sqlc.narg('kind')::text IS NULL OR a.kind = sqlc.narg('kind'))
   AND (sqlc.narg('namespace')::text IS NULL OR a.namespace = sqlc.narg('namespace'))
@@ -49,14 +57,14 @@ SELECT a.id, a.cluster_id, c.name AS cluster_name, a.kind, a.namespace,
        o.releases_behind, o.confidence
 FROM artifacts a
 JOIN clusters c ON c.id = a.cluster_id
-LEFT JOIN LATERAL (
-    SELECT ob.latest_version, ob.drift_class, ob.drift_score, ob.releases_behind, ob.confidence
-    FROM observations ob
-    JOIN scans s ON s.id = ob.scan_id
-    WHERE ob.artifact_id = a.id
-    ORDER BY s.started_at DESC
+JOIN LATERAL (
+    SELECT ls.id
+    FROM scans ls
+    WHERE ls.cluster_id = a.cluster_id AND ls.status = 'done'
+    ORDER BY ls.finished_at DESC NULLS LAST, ls.started_at DESC
     LIMIT 1
-) o ON true
+) latest_scan ON true
+JOIN observations o ON o.artifact_id = a.id AND o.scan_id = latest_scan.id
 WHERE a.id = $1;
 
 -- name: CountObservationKindsForLatestScan :many
@@ -84,3 +92,29 @@ WHERE o.scan_id = (
     LIMIT 1
 )
 AND COALESCE(a.source_meta->>'resolve_status', '') = 'auth_required';
+
+-- ListDriftRegistryTargets returns distinct registry/chart-repo targets for artifacts
+-- in the latest completed scan whose observation is unknown drift (for credential picker UI).
+-- name: ListDriftRegistryTargets :many
+SELECT DISTINCT a.kind,
+       CASE
+           WHEN a.kind = 'image' THEN NULLIF(TRIM(a.source_meta->>'registry'), '')
+           WHEN a.kind = 'helm' THEN NULLIF(TRIM(a.source_meta->>'chart_repo'), '')
+           ELSE NULL
+       END AS target
+FROM artifacts a
+JOIN LATERAL (
+    SELECT ls.id
+    FROM scans ls
+    WHERE ls.cluster_id = a.cluster_id AND ls.status = 'done'
+    ORDER BY ls.finished_at DESC NULLS LAST, ls.started_at DESC
+    LIMIT 1
+) latest_scan ON true
+JOIN observations o ON o.artifact_id = a.id AND o.scan_id = latest_scan.id
+WHERE a.cluster_id = $1
+  AND o.drift_class = 'unknown'
+  AND (
+      (a.kind = 'image' AND NULLIF(TRIM(a.source_meta->>'registry'), '') IS NOT NULL)
+      OR (a.kind = 'helm' AND NULLIF(TRIM(a.source_meta->>'chart_repo'), '') IS NOT NULL)
+  )
+ORDER BY a.kind, target;

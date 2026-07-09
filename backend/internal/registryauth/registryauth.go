@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 
@@ -181,7 +182,8 @@ func (p *Provider) BasicForHelmRepo(ctx context.Context, repoURL string) (user, 
 		if row.Kind != "helm" {
 			continue
 		}
-		if normalizeRepoURL(row.Target) != key {
+		rowKey := normalizeRepoURL(row.Target)
+		if rowKey != key {
 			continue
 		}
 		switch row.Method {
@@ -204,6 +206,35 @@ func (p *Provider) BasicForHelmRepo(ctx context.Context, repoURL string) (user, 
 		}
 	}
 	return "", "", false
+}
+
+// HelmRepoTargets returns distinct Helm chart repository URLs configured for the cluster.
+func (p *Provider) HelmRepoTargets(ctx context.Context) []string {
+	if p == nil || p.store == nil {
+		return nil
+	}
+	rows, err := p.store.ListRegistryAuth(ctx, p.clusterID)
+	if err != nil {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	var out []string
+	for _, row := range rows {
+		if row.Kind != "helm" {
+			continue
+		}
+		key := normalizeRepoURL(row.Target)
+		if key == "" {
+			continue
+		}
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, key)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func (p *Provider) configuredPullSecret(ctx context.Context, target, kind string) (ConfiguredAuth, bool) {
@@ -247,8 +278,12 @@ func authFromSecretKeys(sec *corev1.Secret, userKey, passKey, host string) authn
 				if u, uok := sec.Data[userKey]; uok && len(u) > 0 {
 					user = string(u)
 				}
-				if auth := authFromCredentialBytes(pass, host); auth != nil {
-					return auth
+				// When both keys are set, prefer explicit username/password unless the
+				// password field holds embedded dockerconfig JSON (common in .dockerconfigjson secrets).
+				if strings.HasPrefix(strings.TrimSpace(string(pass)), "{") {
+					if auth := authFromCredentialBytes(pass, host); auth != nil {
+						return auth
+					}
 				}
 				return &authn.Basic{Username: user, Password: string(pass)}
 			}
@@ -314,6 +349,47 @@ func authFromSecretData(data map[string][]byte, host string) authn.Authenticator
 		return authFromDockerConfigJSON(raw, host)
 	}
 	return nil
+}
+
+// RegistryHostsFromDockerConfigJSON returns normalized registry hostnames parsed from
+// dockerconfigjson/dockercfg auths keys. Credential values are never returned.
+func RegistryHostsFromDockerConfigJSON(raw []byte) []string {
+	var cfg dockerConfig
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	var hosts []string
+	for key := range cfg.Auths {
+		host := normalizeRegistryHost(key)
+		if host == "" {
+			continue
+		}
+		if _, dup := seen[host]; dup {
+			continue
+		}
+		seen[host] = struct{}{}
+		hosts = append(hosts, host)
+	}
+	sort.Strings(hosts)
+	return hosts
+}
+
+func normalizeRegistryHost(key string) string {
+	key = strings.TrimSpace(key)
+	key = strings.TrimSuffix(key, "/")
+	key = strings.TrimPrefix(strings.TrimPrefix(key, "https://"), "http://")
+	if i := strings.IndexByte(key, '/'); i >= 0 {
+		key = key[:i]
+	}
+	switch key {
+	case "", "https:", "http:":
+		return ""
+	case "index.docker.io":
+		return "docker.io"
+	default:
+		return key
+	}
 }
 
 type dockerConfig struct {

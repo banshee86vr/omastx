@@ -177,6 +177,62 @@ func (s *Server) handleGetArtifact(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, detail)
 }
 
+type registryTargetDTO struct {
+	Kind   string `json:"kind"`
+	Target string `json:"target"`
+}
+
+func (s *Server) handleListRegistryTargets(w http.ResponseWriter, r *http.Request) {
+	clusterID, ok := clusterID(w, r)
+	if !ok {
+		return
+	}
+	if _, err := s.store.GetCluster(r.Context(), clusterID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeClusterNotFound(w)
+			return
+		}
+		s.internalError(w, err)
+		return
+	}
+	rows, err := s.store.ListDriftRegistryTargets(r.Context(), clusterID)
+	if err != nil {
+		s.internalError(w, err)
+		return
+	}
+	seen := map[string]struct{}{}
+	items := make([]registryTargetDTO, 0, len(rows))
+	add := func(kind, target string) {
+		if target == "" {
+			return
+		}
+		key := kind + "\x00" + target
+		if _, dup := seen[key]; dup {
+			return
+		}
+		seen[key] = struct{}{}
+		items = append(items, registryTargetDTO{Kind: kind, Target: target})
+	}
+	for _, row := range rows {
+		target, ok := row.Target.(string)
+		if !ok || target == "" {
+			continue
+		}
+		add(row.Kind, target)
+	}
+	authRows, err := s.store.ListRegistryAuth(r.Context(), clusterID)
+	if err != nil {
+		s.internalError(w, err)
+		return
+	}
+	for _, row := range authRows {
+		if row.Kind == "helm" {
+			add("helm", row.Target)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"targets": items})
+}
+
 func artifactID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {

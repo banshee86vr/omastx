@@ -4,12 +4,26 @@ import { useSearch } from "@tanstack/react-router";
 import { Button, EmptyState, Table, Tag } from "../../ui/index.ts";
 import tableStyles from "../../ui/Table.module.css";
 import { api, type ArtifactFilters, type DriftClass } from "../../lib/api.ts";
-import { clustersQuery } from "../clusters/clusters.ts";
-import { driftTone, isUnverifiedMatch, kindLabel } from "./artifacts.ts";
+import { clustersQuery, scansQuery } from "../clusters/clusters.ts";
+import { driftedCount } from "../clusters/driftStats.ts";
+import { driftTone, kindLabel } from "./artifacts.ts";
 import { ArtifactDetailSheet } from "./ArtifactDetailSheet.tsx";
 import styles from "./ArtifactsPage.module.css";
 
 const CLASSES: DriftClass[] = ["current", "patch", "minor", "major", "deprecated", "unknown"];
+
+function scanTone(status: string): "current" | "caution" | "alarm" | "fathom" {
+  switch (status) {
+    case "done":
+      return "current";
+    case "running":
+      return "caution";
+    case "error":
+      return "alarm";
+    default:
+      return "fathom";
+  }
+}
 
 export function ArtifactsPage() {
   // Seed filters from the URL so links (e.g. from a cluster's scans) land pre-filtered.
@@ -22,6 +36,15 @@ export function ArtifactsPage() {
   const [selected, setSelected] = useState<string | null>(null);
 
   const { data: clusters } = useQuery(clustersQuery);
+
+  const clusterId = cluster || search.cluster || "";
+  const scanContextId = search.scan;
+  const { data: scans } = useQuery({
+    ...scansQuery(clusterId),
+    enabled: Boolean(scanContextId && clusterId),
+  });
+  const openScan = scanContextId ? scans?.find((s) => s.id === scanContextId) : undefined;
+  const clusterName = clusters?.find((c) => c.id === clusterId)?.name;
 
   const filters: ArtifactFilters = {
     cluster: cluster || undefined,
@@ -46,9 +69,38 @@ export function ArtifactsPage() {
     <div className={styles.page}>
       <header>
         <h1 className={styles.headline}>Artifacts</h1>
-        <p className={styles.subline}>
-          Every discovered image and Helm chart, sorted by how far it has drifted from latest.
-        </p>
+        {openScan ? (
+          <div className={styles.scanContext}>
+            <p className={styles.subline}>
+              From scan on {clusterName ?? "cluster"} ·{" "}
+              {new Date(openScan.started_at).toLocaleString()}
+            </p>
+            <dl className={styles.scanMeta}>
+              <div>
+                <dt>Status</dt>
+                <dd>
+                  <Tag tone={scanTone(openScan.status)}>{openScan.status}</Tag>
+                </dd>
+              </div>
+              {openScan.stats && (
+                <>
+                  <div>
+                    <dt>Artifacts</dt>
+                    <dd>{openScan.stats.total}</dd>
+                  </div>
+                  <div>
+                    <dt>Drifted</dt>
+                    <dd>{driftedCount(openScan.stats)}</dd>
+                  </div>
+                </>
+              )}
+            </dl>
+          </div>
+        ) : (
+          <p className={styles.subline}>
+            Every discovered image and Helm chart, sorted by how far it has drifted from latest.
+          </p>
+        )}
       </header>
 
       <div className={styles.filters} role="search">
@@ -134,19 +186,25 @@ export function ArtifactsPage() {
           />
         ) : (
           <>
-            <Table>
+            <Table tableClassName={styles.ledger ?? ""}>
+            <colgroup>
+              <col className={styles.colKind} />
+              <col className={styles.colIdentity} />
+              <col className={styles.colNamespace} />
+              <col className={styles.colInstalled} />
+              <col className={styles.colArrow} />
+              <col className={styles.colLatest} />
+              <col className={styles.colDrift} />
+            </colgroup>
             <thead>
               <tr>
                 <th>Kind</th>
                 <th>Identity</th>
                 <th>Namespace</th>
-                <th>Cluster</th>
                 <th className={tableStyles.alignRight}>Installed</th>
-                <th></th>
+                <th className={styles.arrow} aria-hidden="true"></th>
                 <th>Latest</th>
                 <th>Drift</th>
-                <th>Match</th>
-                <th>Last seen</th>
               </tr>
             </thead>
             <tbody>
@@ -163,28 +221,31 @@ export function ArtifactsPage() {
                     }
                   }}
                 >
-                  <td>
+                  <td className={styles.cellTag}>
                     <Tag tone={a.kind === "helm" ? "caution" : "neutral"}>{kindLabel(a.kind)}</Tag>
                   </td>
-                  <td className={styles.identity}>{a.identity}</td>
-                  <td>{a.namespace}</td>
-                  <td>{a.cluster_name}</td>
-                  <td className={tableStyles.alignRight}>{a.installed}</td>
+                  <td className={styles.identity} title={a.identity}>
+                    {a.identity}
+                  </td>
+                  <td className={styles.cellMono}>{a.namespace}</td>
+                  <td
+                    className={[tableStyles.alignRight, styles.cellMono].join(" ")}
+                    title={a.installed}
+                  >
+                    {a.installed}
+                  </td>
                   <td className={styles.arrow} aria-hidden="true">
                     →
                   </td>
-                  <td className={styles.latest}>{a.latest ?? "—"}</td>
-                  <td>
+                  <td
+                    className={[styles.latest, styles.cellMono].join(" ")}
+                    title={a.latest ?? undefined}
+                  >
+                    {a.latest ?? "—"}
+                  </td>
+                  <td className={styles.cellTag}>
                     <Tag tone={driftTone(a.drift_class)}>{a.drift_class}</Tag>
                   </td>
-                  <td>
-                    {a.kind === "helm" && isUnverifiedMatch(a.confidence) ? (
-                      <Tag tone="fathom">unverified match</Tag>
-                    ) : (
-                      <span className={styles.muted}>—</span>
-                    )}
-                  </td>
-                  <td className={styles.muted}>{new Date(a.last_seen).toLocaleDateString()}</td>
                 </tr>
               ))}
             </tbody>

@@ -18,6 +18,7 @@ import { tryAutoDevLogin } from "./features/auth/devLogin.ts";
 
 export interface ArtifactsSearch {
   cluster?: string | undefined;
+  scan?: string | undefined;
   kind?: string | undefined;
   class?: DriftClass | undefined;
   resolve_status?: string | undefined;
@@ -83,6 +84,7 @@ const artifactsRoute = createRoute({
       : undefined;
     return {
       cluster: typeof search.cluster === "string" ? search.cluster : undefined,
+      scan: typeof search.scan === "string" ? search.scan : undefined,
       kind,
       class: cls.success ? cls.data : undefined,
       resolve_status:

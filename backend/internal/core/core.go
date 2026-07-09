@@ -51,6 +51,8 @@ type Latest struct {
 	// Confidence is the upstream match certainty (0–1). Low values mean the resolver
 	// used a heuristic (e.g. Artifact Hub search) rather than an explicit repo URL.
 	Confidence float32
+	// RepoURL is the Helm chart repository URL used for resolution (helm only).
+	RepoURL string
 	ResolvedAt time.Time
 }
 

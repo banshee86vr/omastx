@@ -173,6 +173,10 @@ func (f *fakeStore) GetLatestCache(_ context.Context, _ db.GetLatestCacheParams)
 	return db.GetLatestCacheRow{}, pgx.ErrNoRows
 }
 
+func (f *fakeStore) ListDriftRegistryTargets(_ context.Context, _ uuid.UUID) ([]db.ListDriftRegistryTargetsRow, error) {
+	return nil, nil
+}
+
 func (f *fakeStore) ListRegistryAuth(_ context.Context, _ uuid.UUID) ([]db.ListRegistryAuthRow, error) {
 	return nil, nil
 }

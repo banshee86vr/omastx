@@ -231,6 +231,7 @@ export const clusterSecretSchema = z.object({
   namespace: z.string(),
   name: z.string(),
   keys: z.array(z.string()),
+  registries: z.array(z.string()).optional(),
 });
 export type ClusterSecret = z.infer<typeof clusterSecretSchema>;
 
@@ -240,6 +241,16 @@ const clusterSecretsResponseSchema = z.object({
 
 const registryAuthResponseSchema = z.object({
   registry_auth: z.array(registryAuthEntrySchema),
+});
+
+export const registryTargetSchema = z.object({
+  kind: z.enum(["image", "helm"]),
+  target: z.string(),
+});
+export type RegistryTarget = z.infer<typeof registryTargetSchema>;
+
+const registryTargetsResponseSchema = z.object({
+  targets: z.array(registryTargetSchema),
 });
 
 export interface PutRegistryAuthInput {
@@ -340,6 +351,11 @@ export const api = {
   listRegistryAuth(clusterId: string): Promise<RegistryAuthEntry[]> {
     return request(`/api/clusters/${clusterId}/registry-auth`, registryAuthResponseSchema).then(
       (r) => r.registry_auth,
+    );
+  },
+  listRegistryTargets(clusterId: string): Promise<RegistryTarget[]> {
+    return request(`/api/clusters/${clusterId}/registry-targets`, registryTargetsResponseSchema).then(
+      (r) => r.targets,
     );
   },
   listClusterSecrets(clusterId: string): Promise<ClusterSecret[]> {

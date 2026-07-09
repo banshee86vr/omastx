@@ -8,10 +8,7 @@
 
 - **Active milestone**: M5 — Signature UI ([M5-signature-ui.md](M5-signature-ui.md))
 - **Status**: not started (M4 completed 2026-07-06)
-- **Last completed task**: M4 fully implemented and verified — Helm 3 release discovery
-  (in-memory decode, metadata-only persistence), helmrepo + Artifact Hub resolvers with
-  nova-style confidence matching, degraded images-only mode, frontend ledger/sheet/cluster
-  UX for charts and unverified matches.
+- **Last completed task**: Registry URL + credential picker UX — artifact Sheet shows registry URL; cluster Registry credentials panel gated on unknown drift; registry target select from unknown-drift artifacts + secret dockerconfig hosts (D15).
 - **Next task**: first unchecked item in [M5-signature-ui.md](M5-signature-ui.md)
 
 ## Milestone status
@@ -35,6 +32,7 @@
 
 | Date | Session summary |
 |------|-----------------|
+| 2026-07-09 | Registry URL + credential picker UX (D15): artifact Sheet shows Registry URL (image `source_meta.registry`, helm `chart_repo`); cluster Registry credentials panel only when latest scan has unknown drift; `GET /clusters/{id}/registry-targets` lists distinct targets from unknown-drift artifacts; cluster-secrets API adds `registries` (dockerconfig auths hostnames only); RegistryAuthPanel uses registry select (drift targets + secret hosts + manual fallback). Gate: unit + integration tests green (`TestRegistryHostsFromDockerConfigJSON`, `TestListRegistryTargetsIntegration`, secrets test); frontend build/tsc clean; security clean (hostnames only from secrets, no cred leakage); best practices clean. |
 | 2026-07-06 | Private registry auth (D14): image provider records workload `image_pull_secrets`; scan attaches `registryauth.Provider` that reads dockerconfig secrets in memory (workload refs first, then cluster `registry_auth` pull-secret refs); OCI resolver retries with auth on 401; helmrepo uses basic auth from encrypted cluster creds; `auth_required` persisted in `source_meta` when credentials missing. Migration `00003_registry_auth` + `PUT/GET /api/clusters/{id}/registry-auth`. Frontend: cluster Registry credentials panel + artifact Sheet auth prompt. Gate: tests/lint green; secrets never persisted/logged/returned (passwords write-only). |
 | 2026-07-06 | Implemented all of M4 (Helm). Backend: `internal/providers/helm` (Helm 3 release Secret discovery, in-memory decode, metadata-only persist), `internal/resolvers/helmrepo` (index.yaml + default public repos, cached/rate-limited), `internal/resolvers/artifacthub` + `match` (nova-style confidence heuristics, D13). Scan orchestrator skips helm when `helm_ok` is false (SSE reason), chains resolvers by confidence, persists `observations.confidence`. Frontend: kind filter + chart tag in ledger, unverified-match indicator, cluster images-only banner, artifact Sheet repo/home links + confidence. Gate: `go test ./...` + frontend build green; security clean (no Secret contents persisted/logged/API-leaked); sqlc list query extended for confidence; helm.sh/helm/v3 pinned. |
 | 2026-07-02 | M3 UX fix: the cluster-detail "Recent scans" rows were inert. Completed scans are now clickable (keyboard-accessible, `role=link` + focus ring + "View artifacts →" affordance) and open the artifact ledger pre-filtered to that cluster. Added `validateSearch` to the `/artifacts` route (cluster/class/q, class parsed via the zod drift-class schema) and seeded `ArtifactsPage` filters from the URL. Gate: no backend change; typecheck/eslint/vite build clean; navigation-only so no new tests warranted and no new security surface (cluster id already user-visible + auth-gated); verified in the compose stack (screenshots). |

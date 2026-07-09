@@ -112,8 +112,13 @@ func chartRepoURL(meta *chart.Metadata) string {
 	if meta == nil {
 		return ""
 	}
-	if v := meta.Annotations["artifacthub.io/repository"]; v != "" {
-		return v
+	for _, key := range []string{
+		"artifacthub.io/repository",
+		"catalog.cattle.io/ui-source-repo",
+	} {
+		if v := strings.TrimSpace(meta.Annotations[key]); v != "" {
+			return v
+		}
 	}
 	for _, s := range meta.Sources {
 		if looksLikeRepoURL(s) {
@@ -124,5 +129,9 @@ func chartRepoURL(meta *chart.Metadata) string {
 }
 
 func looksLikeRepoURL(s string) bool {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "oci://") {
+		return len(s) > len("oci://")
+	}
 	return len(s) >= 7 && (strings.HasPrefix(s, "https://") || strings.HasPrefix(s, "http://"))
 }

@@ -20,7 +20,7 @@ func TestListAccessibleSecrets(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "regcred", Namespace: "prod"},
 			Type:       corev1.SecretTypeDockerConfigJson,
 			Data: map[string][]byte{
-				corev1.DockerConfigJsonKey: []byte(`{"auths":{}}`),
+				corev1.DockerConfigJsonKey: []byte(`{"auths":{"https://ghcr.io/v2/":{},"https://index.docker.io/v1/":{}}}`),
 			},
 		},
 		&corev1.Secret{
@@ -42,6 +42,9 @@ func TestListAccessibleSecrets(t *testing.T) {
 	}
 	if got[0].Name != "regcred" || len(got[0].Keys) != 1 || got[0].Keys[0] != corev1.DockerConfigJsonKey {
 		t.Fatalf("regcred = %+v", got[0])
+	}
+	if len(got[0].Registries) != 2 || got[0].Registries[0] != "docker.io" || got[0].Registries[1] != "ghcr.io" {
+		t.Fatalf("regcred registries = %+v, want docker.io and ghcr.io", got[0].Registries)
 	}
 	if got[1].Name != "repo-basic" || len(got[1].Keys) != 2 {
 		t.Fatalf("repo-basic = %+v", got[1])

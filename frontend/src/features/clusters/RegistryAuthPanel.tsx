@@ -2,13 +2,15 @@ import { useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type PutRegistryAuthInput, type RegistryAuthEntry } from "../../lib/api.ts";
 import { Button, useToast } from "../../ui/index.ts";
-import { clusterSecretsQuery } from "./clusters.ts";
+import { clusterSecretsQuery, registryTargetsQuery } from "./clusters.ts";
 import styles from "./RegistryAuthPanel.module.css";
 
 interface Props {
   clusterId: string;
   helmDiscoveryOK: boolean;
 }
+
+const MANUAL_TARGET = "__manual__";
 
 function usesPullSecret(kind: "image" | "helm", method: "pull_secret" | "basic") {
   return kind === "image" || method === "pull_secret";
@@ -24,6 +26,7 @@ export function RegistryAuthPanel({ clusterId, helmDiscoveryOK }: Props) {
 
   const [kind, setKind] = useState<"image" | "helm">("image");
   const [method, setMethod] = useState<"pull_secret" | "basic">("pull_secret");
+  const [targetChoice, setTargetChoice] = useState("");
   const [target, setTarget] = useState("");
   const [secretName, setSecretName] = useState("");
   const [secretNamespace, setSecretNamespace] = useState("");
@@ -33,6 +36,7 @@ export function RegistryAuthPanel({ clusterId, helmDiscoveryOK }: Props) {
   const [password, setPassword] = useState("");
 
   const showPullSecretFields = usesPullSecret(kind, method);
+  const { data: registryTargets } = useQuery(registryTargetsQuery(clusterId));
   const {
     data: clusterSecrets,
     isLoading: clusterSecretsLoading,
@@ -58,11 +62,23 @@ export function RegistryAuthPanel({ clusterId, helmDiscoveryOK }: Props) {
     [secretsInNamespace, secretName],
   );
 
+  const targetOptions = useMemo(() => {
+    const opts = new Set<string>();
+    registryTargets?.filter((t) => t.kind === kind).forEach((t) => opts.add(t.target));
+    data?.filter((row) => row.kind === kind).forEach((row) => opts.add(row.target));
+    selectedSecret?.registries?.forEach((r) => opts.add(r));
+    clusterSecrets?.forEach((s) => s.registries?.forEach((r) => opts.add(r)));
+    return [...opts].sort((a, b) => a.localeCompare(b));
+  }, [registryTargets, kind, clusterSecrets, selectedSecret, data]);
+
+  const manualTarget = targetChoice === MANUAL_TARGET;
+
   const save = useMutation({
     mutationFn: (input: PutRegistryAuthInput) => api.putRegistryAuth(clusterId, input),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["registry-auth", clusterId] });
       toast("Credentials saved", "Re-scan the cluster to resolve private artifacts.");
+      setTargetChoice("");
       setTarget("");
       setSecretName("");
       setSecretNamespace("");
@@ -95,6 +111,21 @@ export function RegistryAuthPanel({ clusterId, helmDiscoveryOK }: Props) {
     void save.mutateAsync(input);
   }
 
+  function onKindChange(next: "image" | "helm") {
+    setKind(next);
+    setTargetChoice("");
+    setTarget("");
+  }
+
+  function onTargetChoiceChange(value: string) {
+    setTargetChoice(value);
+    if (value === MANUAL_TARGET) {
+      setTarget("");
+      return;
+    }
+    setTarget(value);
+  }
+
   function onNamespaceChange(value: string) {
     setSecretNamespace(value);
     setSecretName("");
@@ -110,6 +141,11 @@ export function RegistryAuthPanel({ clusterId, helmDiscoveryOK }: Props) {
     const passDefault = keys.find((k) => k === "password") ?? keys.find((k) => k !== userDefault) ?? keys[0] ?? "";
     setSecretUsernameKey(userDefault);
     setSecretPasswordKey(passDefault);
+    const registry = secret?.registries?.[0];
+    if (registry && !manualTarget) {
+      setTargetChoice(registry);
+      setTarget(registry);
+    }
   }
 
   const secretsLoadDetail =
@@ -150,21 +186,44 @@ export function RegistryAuthPanel({ clusterId, helmDiscoveryOK }: Props) {
       <form className={styles.form} onSubmit={submit}>
         <label className={styles.label}>
           Kind
-          <select className={styles.input} value={kind} onChange={(e) => setKind(e.target.value as "image" | "helm")}>
+          <select
+            className={styles.input}
+            value={kind}
+            onChange={(e) => onKindChange(e.target.value as "image" | "helm")}
+          >
             <option value="image">Container registry</option>
             <option value="helm">Helm chart repo</option>
           </select>
         </label>
         <label className={styles.label}>
           {kind === "image" ? "Registry host" : "Chart repo URL"}
-          <input
+          <select
             className={styles.input}
-            value={target}
-            onChange={(e) => setTarget(e.target.value)}
-            placeholder={kind === "image" ? "ghcr.io" : "https://charts.example.com"}
-            required
-          />
+            value={targetChoice}
+            onChange={(e) => onTargetChoiceChange(e.target.value)}
+            required={!manualTarget}
+          >
+            <option value="">Choose a registry</option>
+            {targetOptions.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+            <option value={MANUAL_TARGET}>Other (type manually)</option>
+          </select>
         </label>
+        {manualTarget && (
+          <label className={styles.label}>
+            {kind === "image" ? "Registry host" : "Chart repo URL"}
+            <input
+              className={styles.input}
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              placeholder={kind === "image" ? "ghcr.io" : "https://charts.example.com"}
+              required
+            />
+          </label>
+        )}
         {kind === "helm" && (
           <label className={styles.label}>
             Auth method
@@ -293,6 +352,7 @@ export function RegistryAuthPanel({ clusterId, helmDiscoveryOK }: Props) {
           type="submit"
           disabled={
             save.isPending ||
+            !target.trim() ||
             (showPullSecretFields &&
               (!clusterSecrets ||
                 clusterSecrets.length === 0 ||

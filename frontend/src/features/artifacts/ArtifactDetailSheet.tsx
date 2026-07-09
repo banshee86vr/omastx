@@ -14,6 +14,34 @@ function metaString(meta: Record<string, unknown> | null | undefined, key: strin
   return typeof v === "string" && v.trim() !== "" ? v : null;
 }
 
+function firstRepoLikeSource(meta: Record<string, unknown> | null | undefined): string | null {
+  const sources = meta?.sources;
+  if (!Array.isArray(sources)) {
+    return null;
+  }
+  for (const item of sources) {
+    if (typeof item !== "string") {
+      continue;
+    }
+    const s = item.trim();
+    if (s.startsWith("http://") || s.startsWith("https://") || s.startsWith("oci://")) {
+      return s;
+    }
+  }
+  return null;
+}
+
+function registryURLFor(kind: string, meta: Record<string, unknown> | null | undefined): string | null {
+  if (kind === "image") {
+    return metaString(meta, "registry");
+  }
+  return (
+    metaString(meta, "chart_repo") ??
+    metaString(meta, "auth_target") ??
+    firstRepoLikeSource(meta)
+  );
+}
+
 export function ArtifactDetailSheet({ artifactId, onClose }: Props) {
   const { data, isLoading, error } = useQuery({
     ...artifactQuery(artifactId ?? ""),
@@ -21,10 +49,11 @@ export function ArtifactDetailSheet({ artifactId, onClose }: Props) {
   });
 
   const sourceMeta = data?.source_meta ?? undefined;
-  const chartRepo = metaString(sourceMeta, "chart_repo");
+  const registryURL = data ? registryURLFor(data.kind, sourceMeta) : null;
   const home = metaString(sourceMeta, "home");
   const release = metaString(sourceMeta, "release");
   const authRequired = metaString(sourceMeta, "resolve_status") === "auth_required";
+  const repoUnknown = metaString(sourceMeta, "resolve_status") === "repo_unknown";
   const authDetail = metaString(sourceMeta, "resolve_detail");
   const authTarget = metaString(sourceMeta, "auth_target");
 
@@ -50,14 +79,21 @@ export function ArtifactDetailSheet({ artifactId, onClose }: Props) {
             )}
           </div>
 
-          {authRequired && (
+          {(authRequired || repoUnknown) && (
             <div className={styles.authNotice} role="status">
-              <p>{authDetail ?? "This artifact needs registry credentials to resolve latest."}</p>
-              {authTarget && <p className={styles.muted}>Target: {authTarget}</p>}
-              <p className={styles.muted}>
-                For images, add an imagePullSecret on the workload or configure a pull secret on
-                the cluster page. For Helm, add chart repo credentials there, then re-scan.
+              <p>
+                {authDetail ??
+                  (repoUnknown
+                    ? "This chart's repository URL isn't in the release metadata. Add your private Helm chart repo on the cluster page, then re-scan."
+                    : "This artifact needs registry credentials to resolve latest.")}
               </p>
+              {authTarget && <p className={styles.muted}>Target: {authTarget}</p>}
+              {!repoUnknown && (
+                <p className={styles.muted}>
+                  For images, add an imagePullSecret on the workload or configure a pull secret on
+                  the cluster page. For Helm, add chart repo credentials there, then re-scan.
+                </p>
+              )}
             </div>
           )}
 
@@ -74,13 +110,17 @@ export function ArtifactDetailSheet({ artifactId, onClose }: Props) {
                 ? release
                 : `${data.owner_kind} ${data.owner_name}`}
             </dd>
-            {data.kind === "helm" && chartRepo && (
+            {registryURL && (
               <>
-                <dt>Chart repo</dt>
+                <dt>Registry URL</dt>
                 <dd>
-                  <a className={styles.link} href={chartRepo} target="_blank" rel="noreferrer">
-                    {chartRepo}
-                  </a>
+                  {registryURL.startsWith("http") ? (
+                    <a className={styles.link} href={registryURL} target="_blank" rel="noreferrer">
+                      {registryURL}
+                    </a>
+                  ) : (
+                    registryURL
+                  )}
                 </dd>
               </>
             )}

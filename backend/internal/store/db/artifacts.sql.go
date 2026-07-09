@@ -72,6 +72,25 @@ func (q *Queries) CountObservationKindsForLatestScan(ctx context.Context, cluste
 	return items, nil
 }
 
+const deleteArtifactsNotInScan = `-- name: DeleteArtifactsNotInScan :exec
+DELETE FROM artifacts a
+WHERE a.cluster_id = $1
+  AND NOT EXISTS (
+    SELECT 1 FROM observations o
+    WHERE o.scan_id = $2 AND o.artifact_id = a.id
+  )
+`
+
+type DeleteArtifactsNotInScanParams struct {
+	ClusterID uuid.UUID `json:"cluster_id"`
+	ScanID    uuid.UUID `json:"scan_id"`
+}
+
+func (q *Queries) DeleteArtifactsNotInScan(ctx context.Context, arg DeleteArtifactsNotInScanParams) error {
+	_, err := q.db.Exec(ctx, deleteArtifactsNotInScan, arg.ClusterID, arg.ScanID)
+	return err
+}
+
 const getArtifact = `-- name: GetArtifact :one
 SELECT a.id, a.cluster_id, c.name AS cluster_name, a.kind, a.namespace,
        a.owner_kind, a.owner_name, a.identity, a.installed_version,
@@ -82,14 +101,14 @@ SELECT a.id, a.cluster_id, c.name AS cluster_name, a.kind, a.namespace,
        o.releases_behind, o.confidence
 FROM artifacts a
 JOIN clusters c ON c.id = a.cluster_id
-LEFT JOIN LATERAL (
-    SELECT ob.latest_version, ob.drift_class, ob.drift_score, ob.releases_behind, ob.confidence
-    FROM observations ob
-    JOIN scans s ON s.id = ob.scan_id
-    WHERE ob.artifact_id = a.id
-    ORDER BY s.started_at DESC
+JOIN LATERAL (
+    SELECT ls.id
+    FROM scans ls
+    WHERE ls.cluster_id = a.cluster_id AND ls.status = 'done'
+    ORDER BY ls.finished_at DESC NULLS LAST, ls.started_at DESC
     LIMIT 1
-) o ON true
+) latest_scan ON true
+JOIN observations o ON o.artifact_id = a.id AND o.scan_id = latest_scan.id
 WHERE a.id = $1
 `
 
@@ -147,14 +166,14 @@ SELECT a.id, a.cluster_id, c.name AS cluster_name, a.kind, a.namespace,
        o.releases_behind, o.confidence
 FROM artifacts a
 JOIN clusters c ON c.id = a.cluster_id
-LEFT JOIN LATERAL (
-    SELECT ob.latest_version, ob.drift_class, ob.drift_score, ob.releases_behind, ob.confidence
-    FROM observations ob
-    JOIN scans s ON s.id = ob.scan_id
-    WHERE ob.artifact_id = a.id
-    ORDER BY s.started_at DESC
+JOIN LATERAL (
+    SELECT ls.id
+    FROM scans ls
+    WHERE ls.cluster_id = a.cluster_id AND ls.status = 'done'
+    ORDER BY ls.finished_at DESC NULLS LAST, ls.started_at DESC
     LIMIT 1
-) o ON true
+) latest_scan ON true
+JOIN observations o ON o.artifact_id = a.id AND o.scan_id = latest_scan.id
 WHERE ($1::uuid IS NULL OR a.cluster_id = $1)
   AND ($2::text IS NULL OR a.kind = $2)
   AND ($3::text IS NULL OR a.namespace = $3)
@@ -196,8 +215,8 @@ type ListArtifactsRow struct {
 	Confidence       pgtype.Float4      `json:"confidence"`
 }
 
-// ListArtifacts returns each artifact with its most recent observation (the drift
-// from the latest scan that saw it). Filters are optional (NULL = no filter).
+// ListArtifacts returns artifacts from each cluster's latest completed scan.
+// Filters are optional (NULL = no filter).
 // Default sort is drift_score desc (SPEC §5.5). One extra row is fetched by the
 // caller (lim = pageSize+1) to detect whether another page exists.
 func (q *Queries) ListArtifacts(ctx context.Context, arg ListArtifactsParams) ([]ListArtifactsRow, error) {
@@ -235,6 +254,58 @@ func (q *Queries) ListArtifacts(ctx context.Context, arg ListArtifactsParams) ([
 			&i.ReleasesBehind,
 			&i.Confidence,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDriftRegistryTargets = `-- name: ListDriftRegistryTargets :many
+SELECT DISTINCT a.kind,
+       CASE
+           WHEN a.kind = 'image' THEN NULLIF(TRIM(a.source_meta->>'registry'), '')
+           WHEN a.kind = 'helm' THEN NULLIF(TRIM(a.source_meta->>'chart_repo'), '')
+           ELSE NULL
+       END AS target
+FROM artifacts a
+JOIN LATERAL (
+    SELECT ls.id
+    FROM scans ls
+    WHERE ls.cluster_id = a.cluster_id AND ls.status = 'done'
+    ORDER BY ls.finished_at DESC NULLS LAST, ls.started_at DESC
+    LIMIT 1
+) latest_scan ON true
+JOIN observations o ON o.artifact_id = a.id AND o.scan_id = latest_scan.id
+WHERE a.cluster_id = $1
+  AND o.drift_class = 'unknown'
+  AND (
+      (a.kind = 'image' AND NULLIF(TRIM(a.source_meta->>'registry'), '') IS NOT NULL)
+      OR (a.kind = 'helm' AND NULLIF(TRIM(a.source_meta->>'chart_repo'), '') IS NOT NULL)
+  )
+ORDER BY a.kind, target
+`
+
+type ListDriftRegistryTargetsRow struct {
+	Kind   string      `json:"kind"`
+	Target interface{} `json:"target"`
+}
+
+// ListDriftRegistryTargets returns distinct registry/chart-repo targets for artifacts
+// in the latest completed scan whose observation is unknown drift (for credential picker UI).
+func (q *Queries) ListDriftRegistryTargets(ctx context.Context, clusterID uuid.UUID) ([]ListDriftRegistryTargetsRow, error) {
+	rows, err := q.db.Query(ctx, listDriftRegistryTargets, clusterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDriftRegistryTargetsRow
+	for rows.Next() {
+		var i ListDriftRegistryTargetsRow
+		if err := rows.Scan(&i.Kind, &i.Target); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

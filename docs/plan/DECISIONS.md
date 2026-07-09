@@ -152,4 +152,12 @@ Private Helm repos: `helmrepo` sends HTTP basic auth from encrypted cluster cred
 AES-256-GCM encrypted username/password (`basic`, Helm only). Passwords are never returned
 by the API (`has_password` flag only).
 
+## D15: Registry hostnames from dockerconfig secrets exposed for credential picker (2026-07-09)
+
+`GET /api/clusters/{id}/cluster-secrets` now includes a `registries` array per secret:
+normalized hostnames parsed from dockerconfigjson/dockercfg `auths` keys only. Credential
+values (username, password, auth tokens) are never returned. This metadata helps the
+registry-credentials form suggest targets when adding missing credentials for unknown-drift
+artifacts. Complements `GET /api/clusters/{id}/registry-targets`, which lists distinct
+registry/chart-repo URLs from artifacts whose latest observation is unknown drift.
 

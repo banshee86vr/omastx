@@ -89,6 +89,7 @@ func (r *Resolver) Resolve(ctx context.Context, a core.Artifact) (core.Latest, e
 
 	var versions []string
 	var confidence float32
+	var repoURL string
 	if r.cache != nil {
 		cached, fresh, err := r.cache.GetVersions(ctx, identity, a.Kind)
 		if err == nil && fresh {
@@ -109,6 +110,7 @@ func (r *Resolver) Resolve(ctx context.Context, a core.Artifact) (core.Latest, e
 			return core.Latest{ResolvedAt: now}, nil
 		}
 		confidence = conf
+		repoURL = hubPkg.RepositoryURL
 		repoName := hubPkg.Repository
 		if repoName == "" {
 			repoName = hubPkg.Name
@@ -134,6 +136,7 @@ func (r *Resolver) Resolve(ctx context.Context, a core.Artifact) (core.Latest, e
 		Version:    sel.Latest,
 		Candidates: sel.Candidates,
 		Confidence: confidence,
+		RepoURL:    repoURL,
 		ResolvedAt: now,
 	}
 	if sel.ReleasesBehind >= 0 {

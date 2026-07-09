@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -83,6 +84,7 @@ type Store interface {
 	UpdateClusterScanState(ctx context.Context, arg db.UpdateClusterScanStateParams) error
 	UpsertArtifact(ctx context.Context, arg db.UpsertArtifactParams) (uuid.UUID, error)
 	InsertObservation(ctx context.Context, arg db.InsertObservationParams) error
+	DeleteArtifactsNotInScan(ctx context.Context, arg db.DeleteArtifactsNotInScanParams) error
 }
 
 // ClientFactory builds a read-only clientset for a cluster. Injectable for tests.
@@ -237,6 +239,13 @@ func (m *Manager) run(conn db.GetClusterConnectionRow, scanID uuid.UUID) {
 
 	stats := m.resolveAndPersist(ctx, conn.ID, scanID, artifacts)
 
+	if err := m.store.DeleteArtifactsNotInScan(ctx, db.DeleteArtifactsNotInScanParams{
+		ClusterID: conn.ID,
+		ScanID:    scanID,
+	}); err != nil {
+		m.logger.Error("prune stale artifacts", "cluster", conn.ID, "scan", scanID, "error", err)
+	}
+
 	statsJSON, _ := json.Marshal(stats)
 	if err := m.store.FinishScan(ctx, db.FinishScanParams{
 		ID: scanID, Status: "done", Stats: statsJSON,
@@ -320,6 +329,11 @@ func (m *Manager) resolveAndPersist(ctx context.Context, clusterID, scanID uuid.
 			if ae, ok := registryauth.IsAuthRequired(rerr); ok {
 				a = annotateAuthRequired(a, ae)
 				authRequired = true
+			} else if a.Kind == "helm" && latest.Version == "" && helmChartRepo(a.SourceMeta) == "" {
+				a = annotateRepoUnknown(a)
+			}
+			if latest.RepoURL != "" {
+				a = annotateChartRepo(a, latest.RepoURL)
 			}
 			if perr := m.persist(ctx, clusterID, scanID, a, latest, class, score); perr != nil {
 				m.logger.Error("persist artifact", "identity", a.Identity, "error", perr)
@@ -401,6 +415,52 @@ func annotateAuthRequired(a core.Artifact, ae *registryauth.AuthRequiredError) c
 	if ae.Detail != "" {
 		meta["resolve_detail"] = ae.Detail
 	}
+	if ae.Kind == "helm" && ae.Target != "" {
+		if existing, _ := meta["chart_repo"].(string); existing == "" {
+			meta["chart_repo"] = ae.Target
+		}
+	}
+	a.SourceMeta = meta
+	return a
+}
+
+func helmChartRepo(meta map[string]any) string {
+	if meta == nil {
+		return ""
+	}
+	v, _ := meta["chart_repo"].(string)
+	return strings.TrimSpace(v)
+}
+
+func annotateRepoUnknown(a core.Artifact) core.Artifact {
+	if a.Kind != "helm" {
+		return a
+	}
+	meta := map[string]any{}
+	for k, v := range a.SourceMeta {
+		meta[k] = v
+	}
+	if status, _ := meta["resolve_status"].(string); status == "auth_required" {
+		return a
+	}
+	meta["resolve_status"] = "repo_unknown"
+	meta["resolve_detail"] = "This chart's release metadata doesn't include a repository URL. Add your private Helm chart repo on the cluster page, then re-scan."
+	a.SourceMeta = meta
+	return a
+}
+
+func annotateChartRepo(a core.Artifact, repoURL string) core.Artifact {
+	if a.Kind != "helm" || repoURL == "" {
+		return a
+	}
+	meta := map[string]any{}
+	for k, v := range a.SourceMeta {
+		meta[k] = v
+	}
+	if existing, _ := meta["chart_repo"].(string); strings.TrimSpace(existing) != "" {
+		return a
+	}
+	meta["chart_repo"] = strings.TrimSpace(repoURL)
 	a.SourceMeta = meta
 	return a
 }

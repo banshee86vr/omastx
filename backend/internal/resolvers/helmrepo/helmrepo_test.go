@@ -5,7 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/banshee86vr/omastx/backend/internal/core"
+	"github.com/banshee86vr/omastx/backend/internal/registryauth"
 )
 
 type memCache struct {
@@ -71,5 +74,41 @@ func TestCanResolve(t *testing.T) {
 	}
 	if r.CanResolve(core.Artifact{Kind: "image", Identity: "nginx"}) {
 		t.Error("image should not resolve via helmrepo")
+	}
+}
+
+type stubHelmAuthStore struct {
+	targets []registryauth.ConfiguredAuth
+}
+
+func (s stubHelmAuthStore) ListRegistryAuth(context.Context, uuid.UUID) ([]registryauth.ConfiguredAuth, error) {
+	return s.targets, nil
+}
+
+func TestResolveConfiguredRepo(t *testing.T) {
+	t.Parallel()
+	privateRepo := "https://charts.private.example.com"
+	cache := &memCache{}
+	fetcher := stubFetcher{versions: map[string][]string{
+		privateRepo + "/app-of-apps-argo": {"1.0.8", "1.0.9", "1.1.0"},
+	}}
+	r := New(cache, WithFetcher(fetcher), WithRate(1000, 100))
+	prov := registryauth.NewProvider(nil, uuid.New(), stubHelmAuthStore{
+		targets: []registryauth.ConfiguredAuth{{Target: privateRepo, Kind: "helm", Method: "basic"}},
+	}, nil)
+	ctx := registryauth.WithProvider(context.Background(), prov)
+	a := core.Artifact{
+		Kind: "helm", Identity: "app-of-apps-argo", Installed: "1.0.8",
+		SourceMeta: map[string]any{"chart": "app-of-apps-argo"},
+	}
+	latest, err := r.Resolve(ctx, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if latest.Version != "1.1.0" {
+		t.Errorf("latest = %q, want 1.1.0", latest.Version)
+	}
+	if latest.RepoURL != privateRepo {
+		t.Errorf("repoURL = %q, want %q", latest.RepoURL, privateRepo)
 	}
 }

@@ -34,6 +34,7 @@ type ArtifactStore interface {
 	CountAuthRequiredForLatestScan(ctx context.Context, clusterID uuid.UUID) (int32, error)
 	GetArtifact(ctx context.Context, id uuid.UUID) (db.GetArtifactRow, error)
 	GetLatestCache(ctx context.Context, arg db.GetLatestCacheParams) (db.GetLatestCacheRow, error)
+	ListDriftRegistryTargets(ctx context.Context, clusterID uuid.UUID) ([]db.ListDriftRegistryTargetsRow, error)
 }
 
 // RegistryAuthStore persists cluster registry / Helm repo credentials.
@@ -140,6 +141,7 @@ func (s *Server) Router() http.Handler {
 				r.Get("/{id}/scans", s.handleListScans)
 				r.Get("/{id}/scans/{sid}/events", s.handleScanEvents)
 				r.Get("/{id}/registry-auth", s.handleListRegistryAuth)
+				r.Get("/{id}/registry-targets", s.handleListRegistryTargets)
 				r.Get("/{id}/cluster-secrets", s.handleListPullSecrets)
 				r.Put("/{id}/registry-auth", s.handlePutRegistryAuth)
 				r.Delete("/{id}/registry-auth/{target}", s.handleDeleteRegistryAuth)

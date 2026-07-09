@@ -228,7 +228,7 @@ export function ClusterDetailPage() {
               {scans.map((s) => {
                 const done = s.status === "done";
                 const open = () =>
-                  void navigate({ to: "/artifacts", search: { cluster: clusterId } });
+                  void navigate({ to: "/artifacts", search: { cluster: clusterId, scan: s.id } });
                 return (
                   <tr
                     key={s.id}
@@ -266,7 +266,9 @@ export function ClusterDetailPage() {
         </section>
       )}
 
-      <RegistryAuthPanel clusterId={clusterId} helmDiscoveryOK={cluster.rbac?.helm_ok ?? false} />
+      {latestStats && latestStats.unknown > 0 && (
+        <RegistryAuthPanel clusterId={clusterId} helmDiscoveryOK={cluster.rbac?.helm_ok ?? false} />
+      )}
 
       <div className={styles.danger}>
         {confirming ? (
