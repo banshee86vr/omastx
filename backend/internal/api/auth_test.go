@@ -189,6 +189,14 @@ func (f *fakeStore) DeleteRegistryAuth(_ context.Context, _ db.DeleteRegistryAut
 	return nil
 }
 
+func (f *fakeStore) FleetLaneRollup(_ context.Context) ([]db.FleetLaneRollupRow, error) {
+	return nil, nil
+}
+
+func (f *fakeStore) ListRecentFleetScans(_ context.Context, _ int32) ([]db.ListRecentFleetScansRow, error) {
+	return nil, nil
+}
+
 var testMasterKey = bytes.Repeat([]byte{7}, 32)
 
 func newTestServer(store Store) http.Handler {

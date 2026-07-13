@@ -253,6 +253,56 @@ const registryTargetsResponseSchema = z.object({
   targets: z.array(registryTargetSchema),
 });
 
+export const fleetClassCountsSchema = z.object({
+  current: z.number(),
+  patch: z.number(),
+  minor: z.number(),
+  major: z.number(),
+  deprecated: z.number(),
+  unknown: z.number(),
+});
+export type FleetClassCounts = z.infer<typeof fleetClassCountsSchema>;
+
+export const fleetClusterLaneSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  status: z.string(),
+  last_scan_at: z.string().nullable(),
+  total: z.number(),
+  classes: fleetClassCountsSchema,
+});
+export type FleetClusterLane = z.infer<typeof fleetClusterLaneSchema>;
+
+export const fleetScanSchema = z.object({
+  id: z.string(),
+  cluster_id: z.string(),
+  cluster_name: z.string(),
+  started_at: z.string(),
+  finished_at: z.string().nullable(),
+  status: z.string(),
+  error: z.string().nullable(),
+});
+export type FleetScan = z.infer<typeof fleetScanSchema>;
+
+export const fleetFailureSchema = z.object({
+  cluster_id: z.string(),
+  cluster_name: z.string(),
+  reason: z.enum(["scan_failed", "degraded"]),
+  detail: z.string(),
+});
+export type FleetFailure = z.infer<typeof fleetFailureSchema>;
+
+export const fleetSummarySchema = z.object({
+  total: z.number(),
+  current: z.number(),
+  pct_current: z.number(),
+  classes: fleetClassCountsSchema,
+  clusters: z.array(fleetClusterLaneSchema),
+  recent_scans: z.array(fleetScanSchema),
+  failures: z.array(fleetFailureSchema),
+});
+export type FleetSummary = z.infer<typeof fleetSummarySchema>;
+
 export interface PutRegistryAuthInput {
   target: string;
   kind: "image" | "helm";
@@ -332,6 +382,9 @@ export const api = {
   },
   getArtifactKindCounts(clusterId: string): Promise<ArtifactKindCounts> {
     return request(`/api/clusters/${clusterId}/artifact-kinds`, artifactKindCountsSchema);
+  },
+  fleetSummary(): Promise<FleetSummary> {
+    return request("/api/fleet/summary", fleetSummarySchema);
   },
   listArtifacts(filters: ArtifactFilters = {}): Promise<ArtifactsPage> {
     const params = new URLSearchParams();

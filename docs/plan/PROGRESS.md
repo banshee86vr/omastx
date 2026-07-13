@@ -6,10 +6,10 @@
 
 ## Current state
 
-- **Active milestone**: M5 — Signature UI ([M5-signature-ui.md](M5-signature-ui.md))
-- **Status**: not started (M4 completed 2026-07-06)
-- **Last completed task**: Registry URL + credential picker UX — artifact Sheet shows registry URL; cluster Registry credentials panel gated on unknown drift; registry target select from unknown-drift artifacts + secret dockerconfig hosts (D15).
-- **Next task**: first unchecked item in [M5-signature-ui.md](M5-signature-ui.md)
+- **Active milestone**: M6 — Polish ([M6-polish.md](M6-polish.md))
+- **Status**: not started (M5 completed 2026-07-13)
+- **Last completed task**: Implemented all of M5 (Signature UI) — see session log below.
+- **Next task**: first unchecked item in [M6-polish.md](M6-polish.md)
 
 ## Milestone status
 
@@ -19,7 +19,7 @@
 | M2 Clusters | [M2-clusters.md](M2-clusters.md) | done |
 | M3 Scan/images | [M3-scan-images.md](M3-scan-images.md) | done |
 | M4 Helm | [M4-helm.md](M4-helm.md) | done |
-| M5 Signature UI | [M5-signature-ui.md](M5-signature-ui.md) | not started |
+| M5 Signature UI | [M5-signature-ui.md](M5-signature-ui.md) | done |
 | M6 Polish | [M6-polish.md](M6-polish.md) | not started |
 
 ## Known deviations from SPEC
@@ -27,11 +27,18 @@
 - §4.2 color values replaced by owner request: dark grey palette + neon yellow accent
   (light theme accent: chartreuse-olive). Token names/roles and all other §4 rules
   unchanged. See [DECISIONS.md](DECISIONS.md) D7.
+- §4.5 Drift Chart rendering replaced by owner request: the sounding chart (bands +
+  per-artifact vessel markers) was rejected as hard to read and replaced with per-lane
+  stacked drift bars; segments click through to the filtered artifact ledger. Drift
+  semantics, status colors, accessibility, and the sonar sweep remain per SPEC. See
+  [DECISIONS.md](DECISIONS.md) D17.
 
 ## Session log
 
 | Date | Session summary |
 |------|-----------------|
+| 2026-07-13 | Drift Chart redesign (owner request, D17): replaced the M5 sounding chart with per-lane stacked drift bars — `DriftChart.tsx` rewritten as a CSS-Modules component (fixed CURRENT→UNKNOWN segment order, counts printed inside segments for WCAG 1.4.1, lane totals, legend, ChartTooltip, sr-only table, sonar pulse per SSE event kept, <720px stacks label above bar). Fleet lanes now come straight from `GET /api/fleet/summary` `clusters[]` (dropped the fleet-wide artifact fetch; exact counts, empty lanes for unscanned clusters); cluster detail still groups artifacts by namespace. Segment click opens the filtered ledger — added a `namespace` search param to the `/artifacts` route and page (chip + clear). Removed the chart-owned `ArtifactDetailSheet` mounts (the Sheet opens from ledger rows). Gate: `tsc`/`eslint`/`build` clean (bundle shrank ~4 kB); no backend change so no new tests warranted (summary endpoint already integration-tested); security clean (same auth-gated data, no new surface); visually verified in the compose stack with seeded data — fleet, cluster detail, segment click-through to the filtered ledger, and the narrow layout (screenshots). |
+| 2026-07-13 | Implemented all of M5 (Signature UI, D16). Backend: `GET /api/fleet/summary` (`internal/api/fleet.go`) — fleet-wide + per-cluster drift-class counts via `fleet.sql` (`FleetLaneRollup` LEFT-JOIN latest-done-scan, `ListRecentFleetScans`), `failures[]` from degraded status + most recent failed scan per cluster; `artifacthub` resolver now returns `ArtifactHubURL`, persisted to `source_meta.artifacthub_url`. Frontend: the signature visx `DriftChart` (`features/fleet/DriftChart.tsx` + `driftChart.ts`) — bathymetric CURRENT/PATCH/MINOR/MAJOR/ADRIFT bands, cluster lanes (fleet) / namespace lanes (cluster detail), vessel tick + wake markers colored by drift class, depth-sounding counts, Plex Mono tooltip, full keyboard nav (Enter → Sheet), sr-only data table, <720px stacked-bar fallback; `FleetPage` rebuilt with the Bricolage % headline + sub-line and a right rail (needs attention / last scans / clusters); `ClusterDetailPage` gained the namespace-lane chart wired to a sonar-sweep overlay keyed off `useScanStream` SSE events (opacity-only, ≤1200ms, no extra state — reduced motion via the existing global CSS kill-switch); `ArtifactDetailSheet` gained the Artifact Hub link. Gate: new Go integration test `TestFleetSummaryIntegration` (2 clusters + a failed-scan cluster, verified against dockerized Postgres) + unit test for the artifacthub URL; `go vet`/`go test ./...` and frontend `tsc`/`eslint`/`build` all clean; visually verified against the compose stack with seeded data (screenshots) — this caught and fixed two real bugs: the marker hit-area only covered the tip circle instead of the full accessible wake (now a `<rect>` spanning the wake, confirmed via a precise pixel click that opened the correct Sheet), and `FleetPage` briefly flashed the "no clusters" empty state before its query resolved (added a loading branch, matching `ClusterDetailPage`'s existing pattern). Security: fleet-summary endpoint sits behind the same `requireAuth` session-cookie group as `/artifacts`; response contains no kubeconfig/credential material (checked via response-body substring assertions in the integration test); Artifact Hub URL is a public, non-secret constant computed from search results. Best practices: reused existing chart/query/design-system conventions throughout (no new UI kit, no Tailwind); `docs/plan/M5-signature-ui.md` fully checked off; `D16` recorded. |
 | 2026-07-09 | Registry URL + credential picker UX (D15): artifact Sheet shows Registry URL (image `source_meta.registry`, helm `chart_repo`); cluster Registry credentials panel only when latest scan has unknown drift; `GET /clusters/{id}/registry-targets` lists distinct targets from unknown-drift artifacts; cluster-secrets API adds `registries` (dockerconfig auths hostnames only); RegistryAuthPanel uses registry select (drift targets + secret hosts + manual fallback). Gate: unit + integration tests green (`TestRegistryHostsFromDockerConfigJSON`, `TestListRegistryTargetsIntegration`, secrets test); frontend build/tsc clean; security clean (hostnames only from secrets, no cred leakage); best practices clean. |
 | 2026-07-06 | Private registry auth (D14): image provider records workload `image_pull_secrets`; scan attaches `registryauth.Provider` that reads dockerconfig secrets in memory (workload refs first, then cluster `registry_auth` pull-secret refs); OCI resolver retries with auth on 401; helmrepo uses basic auth from encrypted cluster creds; `auth_required` persisted in `source_meta` when credentials missing. Migration `00003_registry_auth` + `PUT/GET /api/clusters/{id}/registry-auth`. Frontend: cluster Registry credentials panel + artifact Sheet auth prompt. Gate: tests/lint green; secrets never persisted/logged/returned (passwords write-only). |
 | 2026-07-06 | Implemented all of M4 (Helm). Backend: `internal/providers/helm` (Helm 3 release Secret discovery, in-memory decode, metadata-only persist), `internal/resolvers/helmrepo` (index.yaml + default public repos, cached/rate-limited), `internal/resolvers/artifacthub` + `match` (nova-style confidence heuristics, D13). Scan orchestrator skips helm when `helm_ok` is false (SSE reason), chains resolvers by confidence, persists `observations.confidence`. Frontend: kind filter + chart tag in ledger, unverified-match indicator, cluster images-only banner, artifact Sheet repo/home links + confidence. Gate: `go test ./...` + frontend build green; security clean (no Secret contents persisted/logged/API-leaked); sqlc list query extended for confidence; helm.sh/helm/v3 pinned. |

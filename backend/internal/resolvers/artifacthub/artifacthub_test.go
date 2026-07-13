@@ -64,4 +64,8 @@ func TestResolveArtifactHub(t *testing.T) {
 	if latest.Confidence < 0.4 {
 		t.Errorf("confidence = %v, want ≥ 0.4 for name match", latest.Confidence)
 	}
+	wantURL := "https://artifacthub.io/packages/helm/ingress-nginx/ingress-nginx"
+	if latest.ArtifactHubURL != wantURL {
+		t.Errorf("artifact hub url = %q, want %q", latest.ArtifactHubURL, wantURL)
+	}
 }

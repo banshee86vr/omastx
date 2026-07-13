@@ -37,6 +37,12 @@ type ArtifactStore interface {
 	ListDriftRegistryTargets(ctx context.Context, clusterID uuid.UUID) ([]db.ListDriftRegistryTargetsRow, error)
 }
 
+// FleetStore is the subset of store queries the fleet summary handler needs.
+type FleetStore interface {
+	FleetLaneRollup(ctx context.Context) ([]db.FleetLaneRollupRow, error)
+	ListRecentFleetScans(ctx context.Context, limit int32) ([]db.ListRecentFleetScansRow, error)
+}
+
 // RegistryAuthStore persists cluster registry / Helm repo credentials.
 type RegistryAuthStore interface {
 	ListRegistryAuth(ctx context.Context, clusterID uuid.UUID) ([]db.ListRegistryAuthRow, error)
@@ -50,6 +56,7 @@ type Store interface {
 	ClusterStore
 	ArtifactStore
 	RegistryAuthStore
+	FleetStore
 }
 
 // Scanner triggers and streams scans. *scan.Manager satisfies it.
@@ -128,6 +135,8 @@ func (s *Server) Router() http.Handler {
 			r.Use(s.requireAuth, s.requireCSRF)
 			r.Get("/auth/me", s.handleMe)
 			r.Post("/auth/logout", s.handleLogout)
+
+			r.Get("/fleet/summary", s.handleFleetSummary)
 
 			r.Route("/clusters", func(r chi.Router) {
 				r.Get("/", s.handleListClusters)

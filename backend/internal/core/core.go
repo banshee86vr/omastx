@@ -53,7 +53,10 @@ type Latest struct {
 	Confidence float32
 	// RepoURL is the Helm chart repository URL used for resolution (helm only).
 	RepoURL string
-	ResolvedAt time.Time
+	// ArtifactHubURL is the matched package's Artifact Hub page, set only when
+	// resolution went through the Artifact Hub search resolver (helm only).
+	ArtifactHubURL string
+	ResolvedAt     time.Time
 }
 
 // ArtifactProvider discovers versioned things inside a cluster.

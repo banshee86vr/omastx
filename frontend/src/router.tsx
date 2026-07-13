@@ -20,6 +20,7 @@ export interface ArtifactsSearch {
   cluster?: string | undefined;
   scan?: string | undefined;
   kind?: string | undefined;
+  namespace?: string | undefined;
   class?: DriftClass | undefined;
   resolve_status?: string | undefined;
   q?: string | undefined;
@@ -86,6 +87,7 @@ const artifactsRoute = createRoute({
       cluster: typeof search.cluster === "string" ? search.cluster : undefined,
       scan: typeof search.scan === "string" ? search.scan : undefined,
       kind,
+      namespace: typeof search.namespace === "string" ? search.namespace : undefined,
       class: cls.success ? cls.data : undefined,
       resolve_status:
         search.resolve_status === "auth_required" ? "auth_required" : undefined,

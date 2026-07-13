@@ -30,6 +30,7 @@ export function ArtifactsPage() {
   const search = useSearch({ from: "/authed/artifacts" });
   const [cluster, setCluster] = useState(search.cluster ?? "");
   const [kind, setKind] = useState(search.kind ?? "");
+  const [namespace, setNamespace] = useState(search.namespace ?? "");
   const [driftClass, setDriftClass] = useState<DriftClass | "">(search.class ?? "");
   const [resolveStatus, setResolveStatus] = useState(search.resolve_status ?? "");
   const [q, setQ] = useState(search.q ?? "");
@@ -49,6 +50,7 @@ export function ArtifactsPage() {
   const filters: ArtifactFilters = {
     cluster: cluster || undefined,
     kind: kind || undefined,
+    namespace: namespace || undefined,
     class: driftClass || undefined,
     resolve_status: resolveStatus || undefined,
     q: q.trim() || undefined,
@@ -63,7 +65,9 @@ export function ArtifactsPage() {
   });
 
   const artifacts = query.data?.pages.flatMap((p) => p.artifacts) ?? [];
-  const hasFilters = Boolean(cluster || kind || driftClass || resolveStatus || q.trim());
+  const hasFilters = Boolean(
+    cluster || kind || namespace || driftClass || resolveStatus || q.trim(),
+  );
 
   return (
     <div className={styles.page}>
@@ -143,6 +147,8 @@ export function ArtifactsPage() {
           ))}
         </select>
 
+        {namespace && <Tag tone="fathom">namespace: {namespace}</Tag>}
+
         {resolveStatus === "auth_required" && (
           <Tag tone="alarm">Needs credentials</Tag>
         )}
@@ -162,6 +168,7 @@ export function ArtifactsPage() {
             onClick={() => {
               setCluster("");
               setKind("");
+              setNamespace("");
               setDriftClass("");
               setResolveStatus("");
               setQ("");

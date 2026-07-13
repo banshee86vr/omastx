@@ -37,14 +37,14 @@ var ErrClusterNotFound = errors.New("cluster not found")
 // Stats summarizes a finished scan; persisted as scans.stats and sent in the
 // terminal SSE event.
 type Stats struct {
-	Total      int `json:"total"`
-	Current    int `json:"current"`
-	Patch      int `json:"patch"`
-	Minor      int `json:"minor"`
-	Major      int `json:"major"`
-	Deprecated int `json:"deprecated"`
-	Unknown    int `json:"unknown"`
-	Errors     int `json:"errors"`
+	Total        int `json:"total"`
+	Current      int `json:"current"`
+	Patch        int `json:"patch"`
+	Minor        int `json:"minor"`
+	Major        int `json:"major"`
+	Deprecated   int `json:"deprecated"`
+	Unknown      int `json:"unknown"`
+	Errors       int `json:"errors"`
 	Images       int `json:"images"`
 	Helm         int `json:"helm"`
 	AuthRequired int `json:"auth_required"`
@@ -335,6 +335,9 @@ func (m *Manager) resolveAndPersist(ctx context.Context, clusterID, scanID uuid.
 			if latest.RepoURL != "" {
 				a = annotateChartRepo(a, latest.RepoURL)
 			}
+			if latest.ArtifactHubURL != "" {
+				a = annotateArtifactHubURL(a, latest.ArtifactHubURL)
+			}
 			if perr := m.persist(ctx, clusterID, scanID, a, latest, class, score); perr != nil {
 				m.logger.Error("persist artifact", "identity", a.Identity, "error", perr)
 				rerr = perr
@@ -461,6 +464,24 @@ func annotateChartRepo(a core.Artifact, repoURL string) core.Artifact {
 		return a
 	}
 	meta["chart_repo"] = strings.TrimSpace(repoURL)
+	a.SourceMeta = meta
+	return a
+}
+
+// annotateArtifactHubURL records the matched package's Artifact Hub page so the
+// UI can link to it (SPEC §5.5). Helm only; never overwrites an existing value.
+func annotateArtifactHubURL(a core.Artifact, hubURL string) core.Artifact {
+	if a.Kind != "helm" || hubURL == "" {
+		return a
+	}
+	meta := map[string]any{}
+	for k, v := range a.SourceMeta {
+		meta[k] = v
+	}
+	if existing, _ := meta["artifacthub_url"].(string); strings.TrimSpace(existing) != "" {
+		return a
+	}
+	meta["artifacthub_url"] = strings.TrimSpace(hubURL)
 	a.SourceMeta = meta
 	return a
 }

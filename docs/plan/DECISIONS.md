@@ -161,3 +161,61 @@ registry-credentials form suggest targets when adding missing credentials for un
 artifacts. Complements `GET /api/clusters/{id}/registry-targets`, which lists distinct
 registry/chart-repo URLs from artifacts whose latest observation is unknown drift.
 
+## D16: Fleet summary shape, Drift Chart marker source, and x-axis band scale (M5, 2026-07-13)
+
+`GET /api/fleet/summary` (`backend/internal/api/fleet.go`) reuses the canonical latest-`done`-
+scan LATERAL pattern from `ListArtifacts`/`CountObservationKindsForLatestScan` via two new
+queries in `fleet.sql`: `FleetLaneRollup` (per-cluster drift-class counts, `LEFT JOIN` so a
+cluster with no completed scan still gets an empty lane) and `ListRecentFleetScans` (last 10
+scans across the fleet, for the right rail). The handler sums lane rows for the fleet-wide
+totals rather than a separate aggregate query. `failures[]` combines cluster
+`status = "degraded"` (Helm access missing) with the most recent `status = "error"` scan per
+cluster (deduped) — no new schema, just a read-side synthesis for "needs attention".
+
+The signature Drift Chart (`frontend/src/features/fleet/DriftChart.tsx`) plots individual
+**artifacts** fetched via `GET /api/artifacts` (paginated client-side up to a 500-artifact cap
+in `fleet.ts`), not the summary endpoint — the summary stays a cheap aggregate for the headline
+and right rail, while the chart owns marker placement. X-axis: 5 fixed bands
+(CURRENT/PATCH/MINOR/MAJOR/ADRIFT, where ADRIFT = deprecated ∪ unknown); within a band, a
+marker's position is `sqrt(drift_score / band_cap)` against a generous per-band cap derived
+from the `Δmajor*10000 + Δminor*100 + Δpatch` formula in `internal/drift` — a "log-ish" fan-out
+without a literal log of scores that start at/near zero.
+
+Marker hit-testing: the interactive area is a transparent `<rect>` spanning the marker's full
+wake (x=0 to the marker's x), not just the tip — the wake line itself has no meaningful click
+target, and a tip-only hit circle left most of the accessible bounding box dead (confirmed by
+manual and automated-click testing against a seeded compose stack); every click along the wake
+now opens the artifact Sheet.
+
+Artifact Hub links: `core.Latest.ArtifactHubURL` is populated by the `artifacthub` resolver
+(repo + normalized package slug → `https://artifacthub.io/packages/helm/{repo}/{pkg}`) and
+persisted to `artifacts.source_meta.artifacthub_url` by the scan orchestrator, mirroring the
+existing `chart_repo` annotation. Only set on a fresh (non-cached) Artifact Hub match, same
+caching trade-off as `RepoURL`.
+
+## D17: Drift Chart redesign — per-lane stacked drift bars (owner request, 2026-07-13)
+
+The owner reviewed the SPEC §4.5 "sounding chart" built in M5 (bathymetric bands, per-artifact
+vessel markers with wake lines) and rejected it as hard to read. It is replaced by a
+**per-lane stacked bar chart** (supersedes the D16 marker-plot design; the D16 fleet-summary
+endpoint and x-axis scale rationale for the sounding chart are retired with it):
+
+- One row per lane (cluster on the fleet view, namespace on cluster detail); each row is a
+  stacked bar of drift-class counts in a fixed CURRENT → UNKNOWN order, with the count printed
+  inside every segment (class identity never relies on color alone, WCAG 1.4.1) and the lane
+  total at the right. Bar length is proportional to the lane's artifact count relative to the
+  busiest lane. Plain CSS Modules, no visx needed for this chart (other charts keep visx).
+- Interaction changes from per-artifact to per-class: clicking a segment opens the artifact
+  ledger pre-filtered (`/artifacts?cluster=…&class=…`, plus `&namespace=…` from cluster
+  detail — the artifacts route/page gained a `namespace` search param for this). The detail
+  Sheet still opens from ledger rows; the chart no longer opens it directly.
+- Data: the fleet chart now reads lanes straight from `GET /api/fleet/summary` `clusters[]`
+  (exact counts, no artifact pagination, empty lanes for never-scanned clusters); cluster
+  detail still groups the cluster's artifacts by namespace client-side (capped fetch).
+- Sonar sweep (SPEC §4.6) is kept as an opacity-only pulse over the lane rows during a scan,
+  one per SSE progress event; instant under `prefers-reduced-motion`. The <720px layout stacks
+  the label above the bar — no separate fallback chart is needed anymore.
+
+Like D7, only the *rendering* of §4.5 changes by owner decision; drift semantics, status
+colors, tokens, keyboard access, and the sr-only data table remain per SPEC.
+

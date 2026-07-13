@@ -12,6 +12,9 @@ import { ArtifactKindChart } from "./ArtifactKindChart.tsx";
 import { latestScanStats, mergeKindCounts, statsHasKindBreakdown } from "./driftStats.ts";
 import { ScanProgressModal } from "./ScanProgressModal.tsx";
 import { useScanStream } from "./useScanStream.ts";
+import { DriftChart } from "../fleet/DriftChart.tsx";
+import { lanesFromArtifacts } from "../fleet/driftChart.ts";
+import { clusterChartArtifactsQuery } from "../fleet/fleet.ts";
 import styles from "./ClusterDetailPage.module.css";
 
 function statusTone(status: string): "current" | "caution" | "alarm" | "fathom" {
@@ -68,12 +71,16 @@ export function ClusterDetailPage() {
   const [scanId, setScanId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
 
+  const { data: chartArtifacts } = useQuery(clusterChartArtifactsQuery(clusterId));
+  const driftLanes = lanesFromArtifacts(chartArtifacts ?? []);
+
   const progress = useScanStream(clusterId, scanId, (event) => {
     void queryClient.invalidateQueries({ queryKey: clusterQuery(clusterId).queryKey });
     void queryClient.invalidateQueries({ queryKey: scansQuery(clusterId).queryKey });
     void queryClient.invalidateQueries({ queryKey: artifactKindCountsQuery(clusterId).queryKey });
     void queryClient.invalidateQueries({ queryKey: ["artifacts"] });
     void queryClient.invalidateQueries({ queryKey: clustersQuery.queryKey });
+    void queryClient.invalidateQueries({ queryKey: clusterChartArtifactsQuery(clusterId).queryKey });
     if (event.phase === "done") {
       toast("Scan complete", event.message || "The cluster snapshot is ready.");
       setScanId(null);
@@ -82,6 +89,9 @@ export function ClusterDetailPage() {
       setScanId(null);
     }
   });
+  // Re-triggers the chart's sonar sweep animation once per SSE progress event
+  // (SPEC §4.6): each distinct event remounts the sweep overlay via this key.
+  const sweepNonce = progress ? `${progress.phase}:${progress.done}:${progress.total}` : 0;
   const scanModalOpen =
     starting ||
     (scanId !== null &&
@@ -185,6 +195,23 @@ export function ClusterDetailPage() {
           </section>
         )}
       </div>
+
+      <section className={styles.section} aria-label="Drift chart">
+        <h2 className={styles.sectionTitle}>Drift</h2>
+        <DriftChart
+          lanes={driftLanes}
+          laneHeading="Namespace"
+          onSelectClass={(namespace, cls) =>
+            void navigate({
+              to: "/artifacts",
+              search: { cluster: clusterId, namespace, class: cls },
+            })
+          }
+          sweepingLaneKey={scanId ? "*" : null}
+          sweepNonce={sweepNonce}
+          emptyMessage="Run a scan to chart drift for this cluster's namespaces."
+        />
+      </section>
 
       {showCharts && scans && (
         <div className={styles.chartsRow}>

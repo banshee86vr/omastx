@@ -90,6 +90,7 @@ func (r *Resolver) Resolve(ctx context.Context, a core.Artifact) (core.Latest, e
 	var versions []string
 	var confidence float32
 	var repoURL string
+	var hubURL string
 	if r.cache != nil {
 		cached, fresh, err := r.cache.GetVersions(ctx, identity, a.Kind)
 		if err == nil && fresh {
@@ -115,6 +116,14 @@ func (r *Resolver) Resolve(ctx context.Context, a core.Artifact) (core.Latest, e
 		if repoName == "" {
 			repoName = hubPkg.Name
 		}
+		pkgSlug := hubPkg.Normalized
+		if pkgSlug == "" {
+			pkgSlug = hubPkg.Name
+		}
+		if repoName != "" && pkgSlug != "" {
+			hubURL = fmt.Sprintf("https://artifacthub.io/packages/helm/%s/%s",
+				url.PathEscape(repoName), url.PathEscape(pkgSlug))
+		}
 		versions, err = r.client.Versions(ctx, repoName, hubPkg.Normalized)
 		if err != nil {
 			return core.Latest{}, fmt.Errorf("artifact hub versions: %w", err)
@@ -133,11 +142,12 @@ func (r *Resolver) Resolve(ctx context.Context, a core.Artifact) (core.Latest, e
 
 	sel := drift.SelectLatest(a.Installed, versions)
 	latest := core.Latest{
-		Version:    sel.Latest,
-		Candidates: sel.Candidates,
-		Confidence: confidence,
-		RepoURL:    repoURL,
-		ResolvedAt: now,
+		Version:        sel.Latest,
+		Candidates:     sel.Candidates,
+		Confidence:     confidence,
+		RepoURL:        repoURL,
+		ArtifactHubURL: hubURL,
+		ResolvedAt:     now,
 	}
 	if sel.ReleasesBehind >= 0 {
 		behind := sel.ReleasesBehind

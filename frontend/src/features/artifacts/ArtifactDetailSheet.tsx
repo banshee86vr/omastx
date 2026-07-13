@@ -42,6 +42,10 @@ function registryURLFor(kind: string, meta: Record<string, unknown> | null | und
   );
 }
 
+function artifactHubURLFor(kind: string, meta: Record<string, unknown> | null | undefined): string | null {
+  return kind === "helm" ? metaString(meta, "artifacthub_url") : null;
+}
+
 export function ArtifactDetailSheet({ artifactId, onClose }: Props) {
   const { data, isLoading, error } = useQuery({
     ...artifactQuery(artifactId ?? ""),
@@ -50,6 +54,7 @@ export function ArtifactDetailSheet({ artifactId, onClose }: Props) {
 
   const sourceMeta = data?.source_meta ?? undefined;
   const registryURL = data ? registryURLFor(data.kind, sourceMeta) : null;
+  const artifactHubURL = data ? artifactHubURLFor(data.kind, sourceMeta) : null;
   const home = metaString(sourceMeta, "home");
   const release = metaString(sourceMeta, "release");
   const authRequired = metaString(sourceMeta, "resolve_status") === "auth_required";
@@ -130,6 +135,16 @@ export function ArtifactDetailSheet({ artifactId, onClose }: Props) {
                 <dd>
                   <a className={styles.link} href={home} target="_blank" rel="noreferrer">
                     {home}
+                  </a>
+                </dd>
+              </>
+            )}
+            {artifactHubURL && (
+              <>
+                <dt>Artifact Hub</dt>
+                <dd>
+                  <a className={styles.link} href={artifactHubURL} target="_blank" rel="noreferrer">
+                    View on Artifact Hub
                   </a>
                 </dd>
               </>
