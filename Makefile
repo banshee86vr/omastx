@@ -55,6 +55,14 @@ build:
 migrate:
 	cd backend && go run ./cmd/omastx -migrate-only
 
+## seed: load 3 realistic demo clusters for UI review (idempotent)
+seed:
+	@set -a && export OMASTX_DEV=true && \
+	export DATABASE_URL="$${DATABASE_URL:-postgres://omastx:$${POSTGRES_PASSWORD:-omastx}@localhost:5432/omastx?sslmode=disable}" && \
+	{ test -f deploy/.env && . ./deploy/.env; true; } && \
+	export OMASTX_DEV=true && set +a && \
+	cd backend && go run ./cmd/seed
+
 ## sqlc: regenerate typed queries from backend/internal/store
 sqlc:
 	cd backend && go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate

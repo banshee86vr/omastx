@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "lint": "eslint src",
     "typecheck": "tsc -b --noEmit",
-    "format": "prettier --write src"
+    "format": "prettier --write src",
+    "a11y": "node scripts/a11y-perf.mjs"
   },
   "dependencies": {
     "@fontsource/bricolage-grotesque": "^5.2.10",
@@ -29,6 +30,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.10.2",
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.1.0",
     "@types/react": "^19.2.17",
@@ -37,6 +39,7 @@
     "eslint": "^10.6.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.7.0",
+    "playwright": "^1.51.0",
     "prettier": "^3.9.4",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.62.1",

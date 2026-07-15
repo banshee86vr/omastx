@@ -47,6 +47,33 @@ ORDER BY COALESCE(o.drift_score, -1) DESC, a.identity ASC, a.id ASC
 OFFSET sqlc.arg('off')
 LIMIT sqlc.arg('lim');
 
+-- ListArtifactsForExport returns all matching artifacts (no pagination) for CSV/JSON export.
+-- name: ListArtifactsForExport :many
+SELECT a.id, a.cluster_id, c.name AS cluster_name, a.kind, a.namespace,
+       a.owner_kind, a.owner_name, a.identity, a.installed_version, a.last_seen,
+       o.latest_version,
+       COALESCE(o.drift_class, 'unknown')::text AS drift_class,
+       COALESCE(o.drift_score, 0)::double precision AS drift_score,
+       o.releases_behind, o.confidence
+FROM artifacts a
+JOIN clusters c ON c.id = a.cluster_id
+JOIN LATERAL (
+    SELECT ls.id
+    FROM scans ls
+    WHERE ls.cluster_id = a.cluster_id AND ls.status = 'done'
+    ORDER BY ls.finished_at DESC NULLS LAST, ls.started_at DESC
+    LIMIT 1
+) latest_scan ON true
+JOIN observations o ON o.artifact_id = a.id AND o.scan_id = latest_scan.id
+WHERE (sqlc.narg('cluster')::uuid IS NULL OR a.cluster_id = sqlc.narg('cluster'))
+  AND (sqlc.narg('kind')::text IS NULL OR a.kind = sqlc.narg('kind'))
+  AND (sqlc.narg('namespace')::text IS NULL OR a.namespace = sqlc.narg('namespace'))
+  AND (sqlc.narg('class')::text IS NULL OR o.drift_class = sqlc.narg('class'))
+  AND (sqlc.narg('resolve_status')::text IS NULL
+       OR COALESCE(a.source_meta->>'resolve_status', '') = sqlc.narg('resolve_status'))
+  AND (sqlc.narg('q')::text IS NULL OR a.identity ILIKE '%' || sqlc.narg('q') || '%')
+ORDER BY COALESCE(o.drift_score, -1) DESC, a.identity ASC, a.id ASC;
+
 -- name: GetArtifact :one
 SELECT a.id, a.cluster_id, c.name AS cluster_name, a.kind, a.namespace,
        a.owner_kind, a.owner_name, a.identity, a.installed_version,

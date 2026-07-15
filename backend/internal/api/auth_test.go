@@ -43,7 +43,10 @@ const testPassword = "secret"
 
 func (f *fakeStore) addUser(email string) db.User {
 	hash, _ := bcrypt.GenerateFromPassword([]byte(testPassword), bcrypt.MinCost)
-	u := db.User{ID: uuid.New(), Email: email, PasswordHash: string(hash), Role: "admin"}
+	u := db.User{
+		ID: uuid.New(), Email: email, PasswordHash: string(hash), Role: "admin",
+		CreatedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+	}
 	f.users[email] = u
 	return u
 }
@@ -142,6 +145,16 @@ func (f *fakeStore) DeleteCluster(_ context.Context, id uuid.UUID) (int64, error
 	return 1, nil
 }
 
+func (f *fakeStore) UpdateClusterSchedule(_ context.Context, arg db.UpdateClusterScheduleParams) error {
+	c, ok := f.clusters[arg.ID]
+	if !ok {
+		return pgx.ErrNoRows
+	}
+	c.ScheduleCron = arg.ScheduleCron
+	f.clusters[arg.ID] = c
+	return nil
+}
+
 // ArtifactStore methods: the M1/M2 unit tests don't exercise scans/artifacts, so
 // these are minimal (empty results). The scan flow is covered by the integration
 // test against dockerized Postgres.
@@ -157,6 +170,10 @@ func (f *fakeStore) ListArtifacts(_ context.Context, _ db.ListArtifactsParams) (
 	return nil, nil
 }
 
+func (f *fakeStore) ListArtifactsForExport(_ context.Context, _ db.ListArtifactsForExportParams) ([]db.ListArtifactsForExportRow, error) {
+	return nil, nil
+}
+
 func (f *fakeStore) CountObservationKindsForLatestScan(_ context.Context, _ uuid.UUID) ([]db.CountObservationKindsForLatestScanRow, error) {
 	return nil, nil
 }
@@ -167,6 +184,10 @@ func (f *fakeStore) CountAuthRequiredForLatestScan(_ context.Context, _ uuid.UUI
 
 func (f *fakeStore) GetArtifact(_ context.Context, _ uuid.UUID) (db.GetArtifactRow, error) {
 	return db.GetArtifactRow{}, pgx.ErrNoRows
+}
+
+func (f *fakeStore) ListObservationHistory(_ context.Context, _ db.ListObservationHistoryParams) ([]db.ListObservationHistoryRow, error) {
+	return nil, nil
 }
 
 func (f *fakeStore) GetLatestCache(_ context.Context, _ db.GetLatestCacheParams) (db.GetLatestCacheRow, error) {
@@ -195,6 +216,91 @@ func (f *fakeStore) FleetLaneRollup(_ context.Context) ([]db.FleetLaneRollupRow,
 
 func (f *fakeStore) ListRecentFleetScans(_ context.Context, _ int32) ([]db.ListRecentFleetScansRow, error) {
 	return nil, nil
+}
+
+func (f *fakeStore) GetAppSettings(_ context.Context) (db.GetAppSettingsRow, error) {
+	return db.GetAppSettingsRow{}, nil
+}
+
+func (f *fakeStore) UpdateAppSettings(_ context.Context, _ db.UpdateAppSettingsParams) error {
+	return nil
+}
+
+func (f *fakeStore) ListGlobalRegistryAuth(_ context.Context) ([]db.GlobalRegistryAuth, error) {
+	return nil, nil
+}
+
+func (f *fakeStore) UpsertGlobalRegistryAuth(_ context.Context, _ db.UpsertGlobalRegistryAuthParams) (uuid.UUID, error) {
+	return uuid.New(), nil
+}
+
+func (f *fakeStore) DeleteGlobalRegistryAuth(_ context.Context, _ db.DeleteGlobalRegistryAuthParams) error {
+	return nil
+}
+
+func (f *fakeStore) ListUsers(_ context.Context) ([]db.ListUsersRow, error) {
+	rows := make([]db.ListUsersRow, 0, len(f.users))
+	for _, u := range f.users {
+		rows = append(rows, db.ListUsersRow{
+			ID: u.ID, Email: u.Email, Role: u.Role, CreatedAt: u.CreatedAt,
+		})
+	}
+	return rows, nil
+}
+
+func (f *fakeStore) CreateUser(_ context.Context, arg db.CreateUserParams) (db.User, error) {
+	if _, ok := f.users[arg.Email]; ok {
+		return db.User{}, pgx.ErrNoRows
+	}
+	u := db.User{
+		ID: uuid.New(), Email: arg.Email, PasswordHash: arg.PasswordHash,
+		Role: arg.Role, CreatedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+	}
+	f.users[arg.Email] = u
+	return u, nil
+}
+
+func (f *fakeStore) UpdateUser(_ context.Context, arg db.UpdateUserParams) error {
+	for email, u := range f.users {
+		if u.ID == arg.ID {
+			u.Role = arg.Role
+			if arg.PasswordHash != "" {
+				u.PasswordHash = arg.PasswordHash
+			}
+			f.users[email] = u
+			return nil
+		}
+	}
+	return pgx.ErrNoRows
+}
+
+func (f *fakeStore) DeleteUser(_ context.Context, id uuid.UUID) (int64, error) {
+	for email, u := range f.users {
+		if u.ID == id {
+			delete(f.users, email)
+			return 1, nil
+		}
+	}
+	return 0, nil
+}
+
+func (f *fakeStore) CountUsersByRole(_ context.Context, role string) (int64, error) {
+	var n int64
+	for _, u := range f.users {
+		if u.Role == role {
+			n++
+		}
+	}
+	return n, nil
+}
+
+func (f *fakeStore) GetUserByID(_ context.Context, id uuid.UUID) (db.User, error) {
+	for _, u := range f.users {
+		if u.ID == id {
+			return u, nil
+		}
+	}
+	return db.User{}, pgx.ErrNoRows
 }
 
 var testMasterKey = bytes.Repeat([]byte{7}, 32)

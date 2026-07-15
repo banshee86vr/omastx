@@ -193,6 +193,15 @@ persisted to `artifacts.source_meta.artifacthub_url` by the scan orchestrator, m
 existing `chart_repo` annotation. Only set on a fresh (non-cached) Artifact Hub match, same
 caching trade-off as `RepoURL`.
 
+## D18: App settings table + global registry auth fallback (M6, 2026-07-15)
+
+M6 adds a singleton `app_settings` row (per-resolver cache TTLs: oci / helmrepo /
+artifacthub, default 6h each) editable via `PUT /api/settings` and read dynamically by
+resolvers through `internal/settings.Loader` (invalidated on write). Global/default
+registry credentials live in `global_registry_auth` (basic auth only, AES-256-GCM like
+cluster `registry_auth`); `registryauth.Provider` falls back to them when no per-cluster
+match exists. Settings and user-management endpoints are admin-only (`requireAdmin`).
+
 ## D17: Drift Chart redesign — per-lane stacked drift bars (owner request, 2026-07-13)
 
 The owner reviewed the SPEC §4.5 "sounding chart" built in M5 (bathymetric bands, per-artifact

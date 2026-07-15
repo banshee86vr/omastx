@@ -29,9 +29,12 @@ FROM clusters
 WHERE id = $1;
 
 -- name: ListClusterSchedules :many
-SELECT id, name, schedule_cron
+SELECT id, name, schedule_cron, last_scan_at
 FROM clusters
 ORDER BY name;
+
+-- name: UpdateClusterSchedule :exec
+UPDATE clusters SET schedule_cron = $2 WHERE id = $1;
 
 -- name: DeleteCluster :execrows
 DELETE FROM clusters WHERE id = $1;

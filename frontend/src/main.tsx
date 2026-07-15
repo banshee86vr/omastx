@@ -12,6 +12,9 @@ import "./styles/base.css";
 
 import { makeRouter } from "./router.tsx";
 import { ToastProvider } from "./ui/index.ts";
+import { initTheme } from "./lib/theme.ts";
+
+initTheme();
 
 const queryClient = new QueryClient();
 const router = makeRouter(queryClient);

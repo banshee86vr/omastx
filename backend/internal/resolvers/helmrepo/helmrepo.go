@@ -49,6 +49,7 @@ type Resolver struct {
 	cache    Cache
 	fetcher  IndexFetcher
 	ttl      time.Duration
+	ttlFn    func() time.Duration
 	limiters *hostLimiters
 	repos    []string
 }
@@ -61,6 +62,22 @@ func WithTTL(ttl time.Duration) Option {
 			r.ttl = ttl
 		}
 	}
+}
+
+func WithTTLFunc(fn func() time.Duration) Option {
+	return func(r *Resolver) { r.ttlFn = fn }
+}
+
+func (r *Resolver) cacheTTL() time.Duration {
+	if r.ttlFn != nil {
+		if d := r.ttlFn(); d > 0 {
+			return d
+		}
+	}
+	if r.ttl > 0 {
+		return r.ttl
+	}
+	return DefaultTTL
 }
 
 func WithFetcher(f IndexFetcher) Option {
@@ -194,7 +211,7 @@ func (r *Resolver) resolveRepo(ctx context.Context, a core.Artifact, repoURL str
 		versions = listed
 		if r.cache != nil {
 			overall := drift.SelectLatest("0.0.0", versions).Latest
-			_ = r.cache.PutVersions(ctx, identity, a.Kind, overall, versions, r.ttl)
+			_ = r.cache.PutVersions(ctx, identity, a.Kind, overall, versions, r.cacheTTL())
 		}
 	}
 	sel := drift.SelectLatest(a.Installed, versions)

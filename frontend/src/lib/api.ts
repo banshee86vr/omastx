@@ -173,6 +173,21 @@ export const artifactDetailSchema = artifactSchema.extend({
 });
 export type ArtifactDetail = z.infer<typeof artifactDetailSchema>;
 
+export const artifactHistoryEntrySchema = z.object({
+  scan_id: z.string(),
+  started_at: z.string(),
+  installed: z.string(),
+  latest: z.string().nullable(),
+  drift_class: driftClassSchema,
+  drift_score: z.number(),
+  releases_behind: z.number().nullable(),
+});
+export type ArtifactHistoryEntry = z.infer<typeof artifactHistoryEntrySchema>;
+
+const artifactHistoryResponseSchema = z.object({
+  history: z.array(artifactHistoryEntrySchema),
+});
+
 const artifactsResponseSchema = z.object({
   artifacts: z.array(artifactSchema),
   next_cursor: z.number().nullable(),
@@ -303,6 +318,30 @@ export const fleetSummarySchema = z.object({
 });
 export type FleetSummary = z.infer<typeof fleetSummarySchema>;
 
+export const appSettingsSchema = z.object({
+  oci_ttl_hours: z.number(),
+  helmrepo_ttl_hours: z.number(),
+  artifacthub_ttl_hours: z.number(),
+});
+export type AppSettings = z.infer<typeof appSettingsSchema>;
+
+const settingsResponseSchema = z.object({
+  settings: appSettingsSchema,
+  global_registry_auth: z.array(registryAuthEntrySchema),
+});
+
+export const adminUserSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  role: z.string(),
+  created_at: z.string(),
+});
+export type AdminUser = z.infer<typeof adminUserSchema>;
+
+const usersResponseSchema = z.object({
+  users: z.array(adminUserSchema),
+});
+
 export interface PutRegistryAuthInput {
   target: string;
   kind: "image" | "helm";
@@ -400,6 +439,61 @@ export const api = {
   },
   getArtifact(id: string): Promise<ArtifactDetail> {
     return request(`/api/artifacts/${id}`, artifactDetailSchema);
+  },
+  getArtifactHistory(id: string): Promise<ArtifactHistoryEntry[]> {
+    return request(`/api/artifacts/${id}/history`, artifactHistoryResponseSchema).then(
+      (r) => r.history,
+    );
+  },
+  exportArtifactsUrl(filters: ArtifactFilters, format: "csv" | "json"): string {
+    const params = new URLSearchParams({ format });
+    if (filters.cluster) params.set("cluster", filters.cluster);
+    if (filters.kind) params.set("kind", filters.kind);
+    if (filters.namespace) params.set("namespace", filters.namespace);
+    if (filters.class) params.set("class", filters.class);
+    if (filters.resolve_status) params.set("resolve_status", filters.resolve_status);
+    if (filters.q) params.set("q", filters.q);
+    return `/api/export?${params.toString()}`;
+  },
+  getSettings(): Promise<z.infer<typeof settingsResponseSchema>> {
+    return request("/api/settings", settingsResponseSchema);
+  },
+  putSettings(settings: AppSettings): Promise<z.infer<typeof settingsResponseSchema>> {
+    return request("/api/settings", settingsResponseSchema, {
+      method: "PUT",
+      body: settings,
+    });
+  },
+  putGlobalRegistryAuth(input: PutRegistryAuthInput): Promise<RegistryAuthEntry[]> {
+    return request("/api/settings/registry-auth", z.object({ credentials: z.array(registryAuthEntrySchema) }), {
+      method: "PUT",
+      body: { ...input, method: "basic" as const },
+    }).then((r) => r.credentials);
+  },
+  deleteGlobalRegistryAuth(target: string, kind: "image" | "helm"): Promise<void> {
+    return request(
+      `/api/settings/registry-auth/${encodeURIComponent(target)}?kind=${kind}`,
+      null,
+      { method: "DELETE" },
+    );
+  },
+  listUsers(): Promise<AdminUser[]> {
+    return request("/api/users", usersResponseSchema).then((r) => r.users);
+  },
+  createUser(input: { email: string; password: string; role: string }): Promise<AdminUser> {
+    return request("/api/users", adminUserSchema, { method: "POST", body: input });
+  },
+  updateUser(id: string, input: { role?: string; password?: string }): Promise<AdminUser> {
+    return request(`/api/users/${id}`, adminUserSchema, { method: "PATCH", body: input });
+  },
+  deleteUser(id: string): Promise<void> {
+    return request(`/api/users/${id}`, null, { method: "DELETE" });
+  },
+  updateClusterSchedule(clusterId: string, schedule_cron: string): Promise<Cluster> {
+    return request(`/api/clusters/${clusterId}/schedule`, clusterSchema, {
+      method: "PUT",
+      body: { schedule_cron },
+    });
   },
   listRegistryAuth(clusterId: string): Promise<RegistryAuthEntry[]> {
     return request(`/api/clusters/${clusterId}/registry-auth`, registryAuthResponseSchema).then(

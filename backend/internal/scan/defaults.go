@@ -9,6 +9,7 @@ import (
 	"github.com/banshee86vr/omastx/backend/internal/resolvers/artifacthub"
 	"github.com/banshee86vr/omastx/backend/internal/resolvers/helmrepo"
 	"github.com/banshee86vr/omastx/backend/internal/resolvers/oci"
+	"github.com/banshee86vr/omastx/backend/internal/settings"
 	"github.com/banshee86vr/omastx/backend/internal/store/db"
 )
 
@@ -18,15 +19,19 @@ func DefaultProviders() []core.ArtifactProvider {
 }
 
 // DefaultResolvers wires the v1 version resolvers with a Postgres-backed cache.
-func DefaultResolvers(q *db.Queries, ttl time.Duration) []core.VersionResolver {
-	if ttl <= 0 {
-		ttl = oci.DefaultTTL
-	}
+// When ttlLoader is non-nil, resolver cache TTLs are read dynamically from app_settings.
+func DefaultResolvers(q *db.Queries, ttlLoader *settings.Loader) []core.VersionResolver {
 	cache := NewVersionCache(q)
+	var ociFn, helmFn, hubFn func() time.Duration
+	if ttlLoader != nil {
+		ociFn = ttlLoader.OciTTL
+		helmFn = ttlLoader.HelmRepoTTL
+		hubFn = ttlLoader.ArtifactHubTTL
+	}
 	return []core.VersionResolver{
-		helmrepo.New(cache, helmrepo.WithTTL(ttl)),
-		artifacthub.New(cache, artifacthub.WithTTL(ttl)),
-		oci.New(dbCache{q: q}, oci.WithTTL(ttl)),
+		helmrepo.New(cache, helmrepo.WithTTLFunc(helmFn)),
+		artifacthub.New(cache, artifacthub.WithTTLFunc(hubFn)),
+		oci.New(dbCache{q: q}, oci.WithTTLFunc(ociFn)),
 	}
 }
 

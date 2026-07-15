@@ -20,6 +20,8 @@ import (
 	"github.com/banshee86vr/omastx/backend/internal/config"
 	"github.com/banshee86vr/omastx/backend/internal/registryauth"
 	"github.com/banshee86vr/omastx/backend/internal/scan"
+	"github.com/banshee86vr/omastx/backend/internal/seed"
+	"github.com/banshee86vr/omastx/backend/internal/settings"
 	"github.com/banshee86vr/omastx/backend/internal/store"
 	"github.com/banshee86vr/omastx/backend/internal/store/db"
 )
@@ -63,11 +65,22 @@ func run(logger *slog.Logger, migrateOnly bool) error {
 		return err
 	}
 
+	settingsLoader := settings.NewLoader(queries)
+	if err := settingsLoader.Refresh(ctx); err != nil {
+		logger.Warn("load app settings failed; using defaults", "error", err)
+	}
+
+	if cfg.DevMode {
+		if err := seed.RepairKubeconfigs(ctx, pool, cfg.MasterKey); err != nil {
+			logger.Warn("seed kubeconfig repair failed", "error", err)
+		}
+	}
+
 	scanner := scan.NewManager(scan.Config{
 		Store:        queries,
 		RegistryAuth: registryauth.DBStore{Q: queries, MasterKey: cfg.MasterKey},
 		Providers:    scan.DefaultProviders(),
-		Resolvers:    scan.DefaultResolvers(queries, 0),
+		Resolvers:    scan.DefaultResolvers(queries, settingsLoader),
 		Logger:       logger,
 		MasterKey:    cfg.MasterKey,
 	})
@@ -81,13 +94,14 @@ func run(logger *slog.Logger, migrateOnly bool) error {
 		logger.Warn("OMASTX_DEV is enabled — using dev defaults and passwordless sign-in; never set this in production")
 	}
 	apiServer := api.NewServer(queries, logger, api.Options{
-		SecureCookies: cfg.SecureCookies,
-		MasterKey:     cfg.MasterKey,
-		DevMode:       cfg.DevMode,
-		DevLoginEmail: cfg.AdminEmail,
-		Connector:     &cluster.KubeConnector{},
-		Scanner:       scanner,
-		Scheduler:     scheduler,
+		SecureCookies:  cfg.SecureCookies,
+		MasterKey:      cfg.MasterKey,
+		DevMode:        cfg.DevMode,
+		DevLoginEmail:  cfg.AdminEmail,
+		Connector:      &cluster.KubeConnector{},
+		Scanner:        scanner,
+		Scheduler:      scheduler,
+		SettingsLoader: settingsLoader,
 	})
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,

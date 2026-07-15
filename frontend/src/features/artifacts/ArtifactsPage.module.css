@@ -20,6 +20,20 @@
   font-size: var(--text-xl);
 }
 
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.exportActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
 .subline {
   color: var(--mist);
   font-size: var(--text-sm);

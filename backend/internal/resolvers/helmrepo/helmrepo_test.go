@@ -85,6 +85,10 @@ func (s stubHelmAuthStore) ListRegistryAuth(context.Context, uuid.UUID) ([]regis
 	return s.targets, nil
 }
 
+func (s stubHelmAuthStore) ListGlobalRegistryAuth(context.Context) ([]registryauth.ConfiguredAuth, error) {
+	return nil, nil
+}
+
 func TestResolveConfiguredRepo(t *testing.T) {
 	t.Parallel()
 	privateRepo := "https://charts.private.example.com"

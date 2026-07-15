@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -16,7 +17,11 @@ import (
 	"github.com/banshee86vr/omastx/backend/internal/store/db"
 )
 
-const artifactPageSize = 100
+const (
+	artifactPageSize        = 100
+	artifactHistoryDefault  = 50
+	artifactHistoryMaxLimit = 200
+)
 
 type artifactDTO struct {
 	ID             string    `json:"id"`
@@ -43,6 +48,16 @@ type artifactDetailDTO struct {
 	FirstSeen  time.Time      `json:"first_seen"`
 }
 
+type artifactHistoryEntryDTO struct {
+	ScanID           string    `json:"scan_id"`
+	StartedAt        time.Time `json:"started_at"`
+	Installed        string    `json:"installed"`
+	Latest           *string   `json:"latest"`
+	DriftClass       string    `json:"drift_class"`
+	DriftScore       float64   `json:"drift_score"`
+	ReleasesBehind   *int      `json:"releases_behind"`
+}
+
 // optionalText returns an invalid (SQL NULL) Text when the value is empty so the
 // query's "$n IS NULL OR ..." filters are skipped.
 func optionalText(v string) pgtype.Text {
@@ -53,27 +68,24 @@ func optionalText(v string) pgtype.Text {
 }
 
 func (s *Server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-
-	params := db.ListArtifactsParams{
-		Kind:           optionalText(q.Get("kind")),
-		Namespace:      optionalText(q.Get("namespace")),
-		Class:          optionalText(q.Get("class")),
-		ResolveStatus:  optionalText(q.Get("resolve_status")),
-		Q:              optionalText(q.Get("q")),
-		Lim:            artifactPageSize + 1,
-	}
-	if c := q.Get("cluster"); c != "" {
-		id, err := uuid.Parse(c)
-		if err != nil {
+	filters, err := parseArtifactFilters(r.URL.Query())
+	if err != nil {
+		if strings.Contains(err.Error(), "cluster") {
 			writeProblem(w, http.StatusBadRequest, "invalid_filter", "Invalid cluster filter",
 				"The cluster filter must be a valid cluster id. Remove it or pick a cluster, then try again.")
 			return
 		}
-		params.Cluster = pgtype.UUID{Bytes: id, Valid: true}
+		if strings.Contains(err.Error(), "sort") {
+			writeProblem(w, http.StatusBadRequest, "invalid_sort", "Invalid sort parameter",
+				"Sort must be drift_score_desc, drift_score_asc, or identity_asc.")
+			return
+		}
+		s.internalError(w, err)
+		return
 	}
+
 	offset := 0
-	if cur := q.Get("cursor"); cur != "" {
+	if cur := r.URL.Query().Get("cursor"); cur != "" {
 		n, err := strconv.Atoi(cur)
 		if err != nil || n < 0 {
 			writeProblem(w, http.StatusBadRequest, "invalid_cursor", "Invalid page cursor",
@@ -82,7 +94,17 @@ func (s *Server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
 		}
 		offset = n
 	}
-	params.Off = int32(offset)
+
+	params := db.ListArtifactsParams{
+		Cluster:       filters.Cluster,
+		Kind:          filters.Kind,
+		Namespace:     filters.Namespace,
+		Class:         filters.Class,
+		ResolveStatus: filters.ResolveStatus,
+		Q:             filters.Q,
+		Off:           int32(offset),
+		Lim:           artifactPageSize + 1,
+	}
 
 	rows, err := s.store.ListArtifacts(r.Context(), params)
 	if err != nil {
@@ -99,24 +121,10 @@ func (s *Server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
 
 	items := make([]artifactDTO, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, artifactDTO{
-			ID:             row.ID.String(),
-			ClusterID:      row.ClusterID.String(),
-			ClusterName:    row.ClusterName,
-			Kind:           row.Kind,
-			Namespace:      row.Namespace,
-			OwnerKind:      row.OwnerKind,
-			OwnerName:      row.OwnerName,
-			Identity:       row.Identity,
-			Installed:      row.InstalledVersion,
-			Latest:         textPtr(row.LatestVersion),
-			DriftClass:     row.DriftClass,
-			DriftScore:     row.DriftScore,
-			ReleasesBehind: int4Ptr(row.ReleasesBehind),
-			Confidence:     float4Ptr(row.Confidence),
-			LastSeen:       row.LastSeen.Time,
-		})
+		items = append(items, rowToDTO(row))
 	}
+	sortArtifactDTOs(items, filters.Sort)
+
 	writeJSON(w, http.StatusOK, map[string]any{"artifacts": items, "next_cursor": nextCursor})
 }
 
@@ -175,6 +183,57 @@ func (s *Server) handleGetArtifact(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, detail)
+}
+
+func (s *Server) handleGetArtifactHistory(w http.ResponseWriter, r *http.Request) {
+	id, ok := artifactID(w, r)
+	if !ok {
+		return
+	}
+	if _, err := s.store.GetArtifact(r.Context(), id); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeArtifactNotFound(w)
+			return
+		}
+		s.internalError(w, err)
+		return
+	}
+
+	limit := int32(artifactHistoryDefault)
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > artifactHistoryMaxLimit {
+			writeProblem(w, http.StatusBadRequest, "invalid_limit", "Invalid history limit",
+				"Limit must be between 1 and 200. Remove it to use the default, then try again.")
+			return
+		}
+		limit = int32(n)
+	}
+
+	rows, err := s.store.ListObservationHistory(r.Context(), db.ListObservationHistoryParams{
+		ArtifactID: id,
+		Limit:      limit,
+	})
+	if err != nil {
+		s.internalError(w, err)
+		return
+	}
+
+	// SQL returns newest-first; charting wants oldest→newest.
+	items := make([]artifactHistoryEntryDTO, 0, len(rows))
+	for i := len(rows) - 1; i >= 0; i-- {
+		row := rows[i]
+		items = append(items, artifactHistoryEntryDTO{
+			ScanID:         row.ScanID.String(),
+			StartedAt:      row.StartedAt.Time,
+			Installed:      row.InstalledVersion,
+			Latest:         textPtr(row.LatestVersion),
+			DriftClass:     row.DriftClass,
+			DriftScore:     row.DriftScore,
+			ReleasesBehind: int4Ptr(row.ReleasesBehind),
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"history": items})
 }
 
 type registryTargetDTO struct {

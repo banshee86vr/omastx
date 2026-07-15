@@ -43,6 +43,7 @@ type Resolver struct {
 	lister   Lister
 	cache    Cache
 	ttl      time.Duration
+	ttlFn    func() time.Duration
 	limiters *hostLimiters
 }
 
@@ -56,6 +57,23 @@ func WithTTL(ttl time.Duration) Option {
 			r.ttl = ttl
 		}
 	}
+}
+
+// WithTTLFunc supplies a dynamic TTL (e.g. from app_settings).
+func WithTTLFunc(fn func() time.Duration) Option {
+	return func(r *Resolver) { r.ttlFn = fn }
+}
+
+func (r *Resolver) cacheTTL() time.Duration {
+	if r.ttlFn != nil {
+		if d := r.ttlFn(); d > 0 {
+			return d
+		}
+	}
+	if r.ttl > 0 {
+		return r.ttl
+	}
+	return DefaultTTL
 }
 
 // WithLister overrides the registry lister (used in tests).
@@ -114,7 +132,7 @@ func (r *Resolver) Resolve(ctx context.Context, a core.Artifact) (core.Latest, e
 		tags = listed
 		if r.cache != nil {
 			overall := drift.SelectLatest("0.0.0", tags).Latest
-			_ = r.cache.PutTags(ctx, a.Identity, a.Kind, overall, tags, r.ttl)
+			_ = r.cache.PutTags(ctx, a.Identity, a.Kind, overall, tags, r.cacheTTL())
 		}
 	}
 

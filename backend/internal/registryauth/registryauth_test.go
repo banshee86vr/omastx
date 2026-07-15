@@ -138,6 +138,10 @@ func (s stubAuthStore) ListRegistryAuth(context.Context, uuid.UUID) ([]Configure
 	return s.rows, nil
 }
 
+func (s stubAuthStore) ListGlobalRegistryAuth(context.Context) ([]ConfiguredAuth, error) {
+	return nil, nil
+}
+
 func TestRegistryHostsFromDockerConfigJSON(t *testing.T) {
 	t.Parallel()
 	raw := []byte(`{"auths":{"https://ghcr.io/v2/":{},"https://index.docker.io/v1/":{},"registry.example.com":{}}}`)

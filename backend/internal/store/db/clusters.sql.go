@@ -165,15 +165,16 @@ func (q *Queries) GetClusterKubeconfig(ctx context.Context, id uuid.UUID) (GetCl
 }
 
 const listClusterSchedules = `-- name: ListClusterSchedules :many
-SELECT id, name, schedule_cron
+SELECT id, name, schedule_cron, last_scan_at
 FROM clusters
 ORDER BY name
 `
 
 type ListClusterSchedulesRow struct {
-	ID           uuid.UUID `json:"id"`
-	Name         string    `json:"name"`
-	ScheduleCron string    `json:"schedule_cron"`
+	ID           uuid.UUID          `json:"id"`
+	Name         string             `json:"name"`
+	ScheduleCron string             `json:"schedule_cron"`
+	LastScanAt   pgtype.Timestamptz `json:"last_scan_at"`
 }
 
 func (q *Queries) ListClusterSchedules(ctx context.Context) ([]ListClusterSchedulesRow, error) {
@@ -185,7 +186,12 @@ func (q *Queries) ListClusterSchedules(ctx context.Context) ([]ListClusterSchedu
 	var items []ListClusterSchedulesRow
 	for rows.Next() {
 		var i ListClusterSchedulesRow
-		if err := rows.Scan(&i.ID, &i.Name, &i.ScheduleCron); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.ScheduleCron,
+			&i.LastScanAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -240,4 +246,18 @@ func (q *Queries) ListClusters(ctx context.Context) ([]ListClustersRow, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateClusterSchedule = `-- name: UpdateClusterSchedule :exec
+UPDATE clusters SET schedule_cron = $2 WHERE id = $1
+`
+
+type UpdateClusterScheduleParams struct {
+	ID           uuid.UUID `json:"id"`
+	ScheduleCron string    `json:"schedule_cron"`
+}
+
+func (q *Queries) UpdateClusterSchedule(ctx context.Context, arg UpdateClusterScheduleParams) error {
+	_, err := q.db.Exec(ctx, updateClusterSchedule, arg.ID, arg.ScheduleCron)
+	return err
 }

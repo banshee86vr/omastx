@@ -13,6 +13,7 @@ import (
 
 	"github.com/banshee86vr/omastx/backend/internal/cluster"
 	"github.com/banshee86vr/omastx/backend/internal/scan"
+	"github.com/banshee86vr/omastx/backend/internal/settings"
 	"github.com/banshee86vr/omastx/backend/internal/store/db"
 )
 
@@ -22,6 +23,7 @@ type ClusterStore interface {
 	ListClusters(ctx context.Context) ([]db.ListClustersRow, error)
 	GetCluster(ctx context.Context, id uuid.UUID) (db.GetClusterRow, error)
 	GetClusterConnection(ctx context.Context, id uuid.UUID) (db.GetClusterConnectionRow, error)
+	UpdateClusterSchedule(ctx context.Context, arg db.UpdateClusterScheduleParams) error
 	DeleteCluster(ctx context.Context, id uuid.UUID) (int64, error)
 }
 
@@ -30,9 +32,11 @@ type ArtifactStore interface {
 	GetScan(ctx context.Context, id uuid.UUID) (db.Scan, error)
 	ListScansByCluster(ctx context.Context, arg db.ListScansByClusterParams) ([]db.Scan, error)
 	ListArtifacts(ctx context.Context, arg db.ListArtifactsParams) ([]db.ListArtifactsRow, error)
+	ListArtifactsForExport(ctx context.Context, arg db.ListArtifactsForExportParams) ([]db.ListArtifactsForExportRow, error)
 	CountObservationKindsForLatestScan(ctx context.Context, clusterID uuid.UUID) ([]db.CountObservationKindsForLatestScanRow, error)
 	CountAuthRequiredForLatestScan(ctx context.Context, clusterID uuid.UUID) (int32, error)
 	GetArtifact(ctx context.Context, id uuid.UUID) (db.GetArtifactRow, error)
+	ListObservationHistory(ctx context.Context, arg db.ListObservationHistoryParams) ([]db.ListObservationHistoryRow, error)
 	GetLatestCache(ctx context.Context, arg db.GetLatestCacheParams) (db.GetLatestCacheRow, error)
 	ListDriftRegistryTargets(ctx context.Context, clusterID uuid.UUID) ([]db.ListDriftRegistryTargetsRow, error)
 }
@@ -57,6 +61,8 @@ type Store interface {
 	ArtifactStore
 	RegistryAuthStore
 	FleetStore
+	SettingsStore
+	UserAdminStore
 }
 
 // Scanner triggers and streams scans. *scan.Manager satisfies it.
@@ -82,6 +88,8 @@ type Options struct {
 	// Scanner runs scans; Scheduler re-reads schedules after cluster changes.
 	Scanner   Scanner
 	Scheduler Scheduler
+	// SettingsLoader supplies dynamic resolver TTLs; refreshed after settings mutations.
+	SettingsLoader *settings.Loader
 }
 
 type Server struct {
@@ -92,9 +100,10 @@ type Server struct {
 	devMode       bool
 	devLoginEmail string
 	connector     cluster.Connector
-	scanner       Scanner
-	scheduler     Scheduler
-	limiter       *loginLimiter
+	scanner        Scanner
+	scheduler      Scheduler
+	settingsLoader *settings.Loader
+	limiter        *loginLimiter
 }
 
 func NewServer(store Store, logger *slog.Logger, opts Options) *Server {
@@ -106,9 +115,10 @@ func NewServer(store Store, logger *slog.Logger, opts Options) *Server {
 		devMode:       opts.DevMode,
 		devLoginEmail: opts.DevLoginEmail,
 		connector:     opts.Connector,
-		scanner:       opts.Scanner,
-		scheduler:     opts.Scheduler,
-		limiter:       newLoginLimiter(5, 15*time.Minute),
+		scanner:        opts.Scanner,
+		scheduler:      opts.Scheduler,
+		settingsLoader: opts.SettingsLoader,
+		limiter:        newLoginLimiter(5, 15*time.Minute),
 	}
 }
 
@@ -137,6 +147,20 @@ func (s *Server) Router() http.Handler {
 			r.Post("/auth/logout", s.handleLogout)
 
 			r.Get("/fleet/summary", s.handleFleetSummary)
+			r.Get("/export", s.handleExport)
+
+			r.Group(func(r chi.Router) {
+				r.Use(s.requireAdmin)
+				r.Get("/settings", s.handleGetSettings)
+				r.Put("/settings", s.handlePutSettings)
+				r.Get("/settings/registry-auth", s.handleListGlobalRegistryAuth)
+				r.Put("/settings/registry-auth", s.handlePutGlobalRegistryAuth)
+				r.Delete("/settings/registry-auth/{target}", s.handleDeleteGlobalRegistryAuth)
+				r.Get("/users", s.handleListUsers)
+				r.Post("/users", s.handleCreateUser)
+				r.Patch("/users/{id}", s.handleUpdateUser)
+				r.Delete("/users/{id}", s.handleDeleteUser)
+			})
 
 			r.Route("/clusters", func(r chi.Router) {
 				r.Get("/", s.handleListClusters)
@@ -144,6 +168,7 @@ func (s *Server) Router() http.Handler {
 				r.Post("/inspect", s.handleInspectKubeconfig)
 				r.Post("/check", s.handleCheckCluster)
 				r.Get("/{id}", s.handleGetCluster)
+				r.Put("/{id}/schedule", s.handleUpdateClusterSchedule)
 				r.Get("/{id}/artifact-kinds", s.handleArtifactKindCounts)
 				r.Delete("/{id}", s.handleDeleteCluster)
 				r.Post("/{id}/scan", s.handleStartScan)
@@ -158,6 +183,7 @@ func (s *Server) Router() http.Handler {
 
 			r.Route("/artifacts", func(r chi.Router) {
 				r.Get("/", s.handleListArtifacts)
+				r.Get("/{id}/history", s.handleGetArtifactHistory)
 				r.Get("/{id}", s.handleGetArtifact)
 			})
 		})

@@ -9,6 +9,14 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AppSetting struct {
+	ID             int32              `json:"id"`
+	OciTtl         pgtype.Interval    `json:"oci_ttl"`
+	HelmrepoTtl    pgtype.Interval    `json:"helmrepo_ttl"`
+	ArtifacthubTtl pgtype.Interval    `json:"artifacthub_ttl"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Artifact struct {
 	ID               uuid.UUID          `json:"id"`
 	ClusterID        uuid.UUID          `json:"cluster_id"`
@@ -35,6 +43,18 @@ type Cluster struct {
 	LastScanAt      pgtype.Timestamptz `json:"last_scan_at"`
 	Status          string             `json:"status"`
 	Context         string             `json:"context"`
+}
+
+type GlobalRegistryAuth struct {
+	ID            uuid.UUID          `json:"id"`
+	Target        string             `json:"target"`
+	Kind          string             `json:"kind"`
+	Method        string             `json:"method"`
+	UsernameEnc   []byte             `json:"username_enc"`
+	UsernameNonce []byte             `json:"username_nonce"`
+	PasswordEnc   []byte             `json:"password_enc"`
+	PasswordNonce []byte             `json:"password_nonce"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 }
 
 type LatestCache struct {

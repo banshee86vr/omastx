@@ -40,6 +40,7 @@ type Resolver struct {
 	cache   Cache
 	client  Client
 	ttl     time.Duration
+	ttlFn   func() time.Duration
 	limiter *rate.Limiter
 }
 
@@ -51,6 +52,22 @@ func WithTTL(ttl time.Duration) Option {
 			r.ttl = ttl
 		}
 	}
+}
+
+func WithTTLFunc(fn func() time.Duration) Option {
+	return func(r *Resolver) { r.ttlFn = fn }
+}
+
+func (r *Resolver) cacheTTL() time.Duration {
+	if r.ttlFn != nil {
+		if d := r.ttlFn(); d > 0 {
+			return d
+		}
+	}
+	if r.ttl > 0 {
+		return r.ttl
+	}
+	return DefaultTTL
 }
 
 func WithClient(c Client) Option {
@@ -136,7 +153,7 @@ func (r *Resolver) Resolve(ctx context.Context, a core.Artifact) (core.Latest, e
 		}
 		if r.cache != nil && len(versions) > 0 {
 			overall := drift.SelectLatest("0.0.0", versions).Latest
-			_ = r.cache.PutVersions(ctx, identity, a.Kind, overall, versions, r.ttl)
+			_ = r.cache.PutVersions(ctx, identity, a.Kind, overall, versions, r.cacheTTL())
 		}
 	}
 

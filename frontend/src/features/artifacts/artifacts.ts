@@ -10,6 +10,14 @@ export function artifactsQuery(filters: ArtifactFilters) {
   });
 }
 
+export function artifactHistoryQuery(id: string) {
+  return queryOptions({
+    queryKey: ["artifacts", "history", id],
+    queryFn: () => api.getArtifactHistory(id),
+    staleTime: 30 * 1000,
+  });
+}
+
 export function artifactQuery(id: string) {
   return queryOptions({
     queryKey: ["artifacts", "detail", id],

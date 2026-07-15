@@ -12,6 +12,7 @@ import { FleetPage } from "./features/fleet/FleetPage.tsx";
 import { ConnectClusterPage } from "./features/clusters/ConnectClusterPage.tsx";
 import { ClusterDetailPage } from "./features/clusters/ClusterDetailPage.tsx";
 import { ArtifactsPage } from "./features/artifacts/ArtifactsPage.tsx";
+import { SettingsPage } from "./features/settings/SettingsPage.tsx";
 import { driftClassSchema, type DriftClass } from "./lib/api.ts";
 import { meQuery } from "./features/auth/auth.ts";
 import { tryAutoDevLogin } from "./features/auth/devLogin.ts";
@@ -97,6 +98,12 @@ const artifactsRoute = createRoute({
   component: ArtifactsPage,
 });
 
+const settingsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/settings",
+  component: SettingsPage,
+});
+
 const routeTree = rootRoute.addChildren([
   signInRoute,
   authedRoute.addChildren([
@@ -104,6 +111,7 @@ const routeTree = rootRoute.addChildren([
     connectClusterRoute,
     clusterDetailRoute,
     artifactsRoute,
+    settingsRoute,
   ]),
 ]);
 

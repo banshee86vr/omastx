@@ -19,6 +19,36 @@ func (s DBStore) ListRegistryAuth(ctx context.Context, clusterID uuid.UUID) ([]C
 	if err != nil {
 		return nil, err
 	}
+	return configuredFromRows(s.MasterKey, rows)
+}
+
+func (s DBStore) ListGlobalRegistryAuth(ctx context.Context) ([]ConfiguredAuth, error) {
+	rows, err := s.Q.ListGlobalRegistryAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ConfiguredAuth, 0, len(rows))
+	for _, row := range rows {
+		cfg := ConfiguredAuth{
+			Target: row.Target,
+			Kind:   row.Kind,
+			Method: row.Method,
+		}
+		if row.Method == "basic" {
+			user, pass, err := DecryptConfigured(s.MasterKey,
+				row.UsernameEnc, row.UsernameNonce, row.PasswordEnc, row.PasswordNonce)
+			if err != nil {
+				return nil, err
+			}
+			cfg.Username = user
+			cfg.Password = pass
+		}
+		out = append(out, cfg)
+	}
+	return out, nil
+}
+
+func configuredFromRows(masterKey []byte, rows []db.ListRegistryAuthRow) ([]ConfiguredAuth, error) {
 	out := make([]ConfiguredAuth, 0, len(rows))
 	for _, row := range rows {
 		cfg := ConfiguredAuth{
@@ -31,7 +61,7 @@ func (s DBStore) ListRegistryAuth(ctx context.Context, clusterID uuid.UUID) ([]C
 			SecretPasswordKey: row.SecretPasswordKey.String,
 		}
 		if row.Method == "basic" {
-			user, pass, err := DecryptConfigured(s.MasterKey,
+			user, pass, err := DecryptConfigured(masterKey,
 				row.UsernameEnc, row.UsernameNonce, row.PasswordEnc, row.PasswordNonce)
 			if err != nil {
 				return nil, err

@@ -76,6 +76,11 @@ export function AppFrame() {
           <Link to="/artifacts" className={styles.navLink}>
             Artifacts
           </Link>
+          {auth?.user.role === "admin" && (
+            <Link to="/settings" className={styles.navLink}>
+              Settings
+            </Link>
+          )}
         </div>
 
         {auth && (

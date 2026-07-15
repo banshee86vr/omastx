@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DRIFT_SLICES, type DriftSliceKey } from "./driftStats.ts";
 
 const FALLBACK: Record<DriftSliceKey, string> = {
@@ -26,7 +26,13 @@ function readChartColors(): Record<DriftSliceKey, string> {
 }
 
 export function useChartColors(): Record<DriftSliceKey, string> {
-  return useMemo(() => readChartColors(), []);
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    const onTheme = () => setVersion((v) => v + 1);
+    window.addEventListener("omastx-theme-change", onTheme);
+    return () => window.removeEventListener("omastx-theme-change", onTheme);
+  }, []);
+  return useMemo(() => readChartColors(), [version]);
 }
 
 export function resolveSliceFill(

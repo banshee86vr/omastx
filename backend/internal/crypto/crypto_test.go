@@ -65,6 +65,11 @@ func TestDecryptFailures(t *testing.T) {
 			t.Error("expected error with wrong nonce")
 		}
 	})
+	t.Run("short nonce", func(t *testing.T) {
+		if _, err := Decrypt(key(1), ct, []byte{0x00}); err == nil {
+			t.Error("expected error with short nonce")
+		}
+	})
 }
 
 func TestKeyLengthEnforced(t *testing.T) {

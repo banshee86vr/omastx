@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
@@ -36,7 +37,8 @@ func NewScheduler(mgr *Manager, store ScheduleStore, logger *slog.Logger) *Sched
 	return &Scheduler{mgr: mgr, store: store, logger: logger}
 }
 
-// Reload rebuilds the schedule from the current set of clusters.
+// Reload rebuilds the schedule from the current set of clusters and triggers
+// catch-up scans for clusters whose last_scan_at is older than their cron interval.
 func (s *Scheduler) Reload(ctx context.Context) error {
 	rows, err := s.store.ListClusterSchedules(ctx)
 	if err != nil {
@@ -47,9 +49,21 @@ func (s *Scheduler) Reload(ctx context.Context) error {
 	for _, row := range rows {
 		id := row.ID
 		name := row.Name
-		if _, err := c.AddFunc(row.ScheduleCron, func() { s.trigger(id, name) }); err != nil {
+		cronExpr := row.ScheduleCron
+		if err := ValidateCron(cronExpr); err != nil {
 			s.logger.Warn("skipping invalid schedule",
-				"cluster", name, "cron", row.ScheduleCron, "error", err)
+				"cluster", name, "cron", cronExpr, "error", err)
+			continue
+		}
+		if _, err := c.AddFunc(cronExpr, func() { s.trigger(id, name) }); err != nil {
+			s.logger.Warn("skipping invalid schedule",
+				"cluster", name, "cron", cronExpr, "error", err)
+			continue
+		}
+		lastAt := row.LastScanAt.Time
+		hasLast := row.LastScanAt.Valid
+		if isMissedRun(lastAt, hasLast, cronExpr, time.Now()) {
+			go s.trigger(id, name)
 		}
 	}
 

@@ -71,8 +71,9 @@ export function ArtifactsPage() {
 
   return (
     <div className={styles.page}>
-      <header>
-        <h1 className={styles.headline}>Artifacts</h1>
+      <header className={styles.header}>
+        <div>
+          <h1 className={styles.headline}>Artifacts</h1>
         {openScan ? (
           <div className={styles.scanContext}>
             <p className={styles.subline}>
@@ -105,6 +106,25 @@ export function ArtifactsPage() {
             Every discovered image and Helm chart, sorted by how far it has drifted from latest.
           </p>
         )}
+        </div>
+        <div className={styles.exportActions}>
+          <Button
+            variant="quiet"
+            onClick={() => {
+              window.location.href = api.exportArtifactsUrl(filters, "csv");
+            }}
+          >
+            Export CSV
+          </Button>
+          <Button
+            variant="quiet"
+            onClick={() => {
+              window.location.href = api.exportArtifactsUrl(filters, "json");
+            }}
+          >
+            Export JSON
+          </Button>
+        </div>
       </header>
 
       <div className={styles.filters} role="search">

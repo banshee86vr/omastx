@@ -264,6 +264,104 @@ func (q *Queries) ListArtifacts(ctx context.Context, arg ListArtifactsParams) ([
 	return items, nil
 }
 
+const listArtifactsForExport = `-- name: ListArtifactsForExport :many
+SELECT a.id, a.cluster_id, c.name AS cluster_name, a.kind, a.namespace,
+       a.owner_kind, a.owner_name, a.identity, a.installed_version, a.last_seen,
+       o.latest_version,
+       COALESCE(o.drift_class, 'unknown')::text AS drift_class,
+       COALESCE(o.drift_score, 0)::double precision AS drift_score,
+       o.releases_behind, o.confidence
+FROM artifacts a
+JOIN clusters c ON c.id = a.cluster_id
+JOIN LATERAL (
+    SELECT ls.id
+    FROM scans ls
+    WHERE ls.cluster_id = a.cluster_id AND ls.status = 'done'
+    ORDER BY ls.finished_at DESC NULLS LAST, ls.started_at DESC
+    LIMIT 1
+) latest_scan ON true
+JOIN observations o ON o.artifact_id = a.id AND o.scan_id = latest_scan.id
+WHERE ($1::uuid IS NULL OR a.cluster_id = $1)
+  AND ($2::text IS NULL OR a.kind = $2)
+  AND ($3::text IS NULL OR a.namespace = $3)
+  AND ($4::text IS NULL OR o.drift_class = $4)
+  AND ($5::text IS NULL
+       OR COALESCE(a.source_meta->>'resolve_status', '') = $5)
+  AND ($6::text IS NULL OR a.identity ILIKE '%' || $6 || '%')
+ORDER BY COALESCE(o.drift_score, -1) DESC, a.identity ASC, a.id ASC
+`
+
+type ListArtifactsForExportParams struct {
+	Cluster       pgtype.UUID `json:"cluster"`
+	Kind          pgtype.Text `json:"kind"`
+	Namespace     pgtype.Text `json:"namespace"`
+	Class         pgtype.Text `json:"class"`
+	ResolveStatus pgtype.Text `json:"resolve_status"`
+	Q             pgtype.Text `json:"q"`
+}
+
+type ListArtifactsForExportRow struct {
+	ID               uuid.UUID          `json:"id"`
+	ClusterID        uuid.UUID          `json:"cluster_id"`
+	ClusterName      string             `json:"cluster_name"`
+	Kind             string             `json:"kind"`
+	Namespace        string             `json:"namespace"`
+	OwnerKind        string             `json:"owner_kind"`
+	OwnerName        string             `json:"owner_name"`
+	Identity         string             `json:"identity"`
+	InstalledVersion string             `json:"installed_version"`
+	LastSeen         pgtype.Timestamptz `json:"last_seen"`
+	LatestVersion    pgtype.Text        `json:"latest_version"`
+	DriftClass       string             `json:"drift_class"`
+	DriftScore       float64            `json:"drift_score"`
+	ReleasesBehind   pgtype.Int4        `json:"releases_behind"`
+	Confidence       pgtype.Float4      `json:"confidence"`
+}
+
+// ListArtifactsForExport returns all matching artifacts (no pagination) for CSV/JSON export.
+func (q *Queries) ListArtifactsForExport(ctx context.Context, arg ListArtifactsForExportParams) ([]ListArtifactsForExportRow, error) {
+	rows, err := q.db.Query(ctx, listArtifactsForExport,
+		arg.Cluster,
+		arg.Kind,
+		arg.Namespace,
+		arg.Class,
+		arg.ResolveStatus,
+		arg.Q,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListArtifactsForExportRow
+	for rows.Next() {
+		var i ListArtifactsForExportRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ClusterID,
+			&i.ClusterName,
+			&i.Kind,
+			&i.Namespace,
+			&i.OwnerKind,
+			&i.OwnerName,
+			&i.Identity,
+			&i.InstalledVersion,
+			&i.LastSeen,
+			&i.LatestVersion,
+			&i.DriftClass,
+			&i.DriftScore,
+			&i.ReleasesBehind,
+			&i.Confidence,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDriftRegistryTargets = `-- name: ListDriftRegistryTargets :many
 SELECT DISTINCT a.kind,
        CASE

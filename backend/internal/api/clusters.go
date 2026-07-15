@@ -17,6 +17,7 @@ import (
 
 	"github.com/banshee86vr/omastx/backend/internal/cluster"
 	"github.com/banshee86vr/omastx/backend/internal/crypto"
+	"github.com/banshee86vr/omastx/backend/internal/scan"
 	"github.com/banshee86vr/omastx/backend/internal/store/db"
 )
 
@@ -139,9 +140,9 @@ func (s *Server) handleCreateCluster(w http.ResponseWriter, r *http.Request) {
 	if schedule == "" {
 		schedule = defaultScheduleCron
 	}
-	if len(strings.Fields(schedule)) != 5 {
+	if err := scan.ValidateCron(schedule); err != nil {
 		writeProblem(w, http.StatusBadRequest, "invalid_schedule", "Invalid scan schedule",
-			"The schedule must be a 5-field cron expression like \"0 */6 * * *\". Fix it and try again.")
+			"The schedule must be a valid 5-field cron expression like \"0 */6 * * *\". Fix it and try again.")
 		return
 	}
 
@@ -241,6 +242,52 @@ func (s *Server) handleGetCluster(w http.ResponseWriter, r *http.Request) {
 			writeClusterNotFound(w)
 			return
 		}
+		s.internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toClusterDTO(row.ID, row.Name, row.ApiServerUrl,
+		row.Status, row.ScheduleCron, row.CreatedAt, row.LastScanAt, row.RbacReport))
+}
+
+func (s *Server) handleUpdateClusterSchedule(w http.ResponseWriter, r *http.Request) {
+	id, ok := clusterID(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		ScheduleCron string `json:"schedule_cron"`
+	}
+	if !readKubeconfigRequest(w, r, &req) {
+		return
+	}
+	schedule := strings.TrimSpace(req.ScheduleCron)
+	if schedule == "" {
+		writeProblem(w, http.StatusBadRequest, "invalid_request", "Missing schedule",
+			"Provide a schedule_cron field with a valid cron expression, then try again.")
+		return
+	}
+	if err := scan.ValidateCron(schedule); err != nil {
+		writeProblem(w, http.StatusBadRequest, "invalid_schedule", "Invalid scan schedule",
+			"The schedule must be a valid 5-field cron expression like \"0 */6 * * *\". Fix it and try again.")
+		return
+	}
+	if _, err := s.store.GetCluster(r.Context(), id); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeClusterNotFound(w)
+			return
+		}
+		s.internalError(w, err)
+		return
+	}
+	if err := s.store.UpdateClusterSchedule(r.Context(), db.UpdateClusterScheduleParams{
+		ID: id, ScheduleCron: schedule,
+	}); err != nil {
+		s.internalError(w, err)
+		return
+	}
+	s.reloadSchedules(r.Context())
+	row, err := s.store.GetCluster(r.Context(), id)
+	if err != nil {
 		s.internalError(w, err)
 		return
 	}

@@ -29,6 +29,9 @@ func Decrypt(key, ciphertext, nonce []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(nonce) != gcm.NonceSize() {
+		return nil, fmt.Errorf("decrypt: invalid nonce length %d, want %d", len(nonce), gcm.NonceSize())
+	}
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt: %w", err)

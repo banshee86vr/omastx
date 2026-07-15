@@ -90,6 +90,7 @@ type ConfiguredAuth struct {
 // Store loads cluster registry auth configuration.
 type Store interface {
 	ListRegistryAuth(ctx context.Context, clusterID uuid.UUID) ([]ConfiguredAuth, error)
+	ListGlobalRegistryAuth(ctx context.Context) ([]ConfiguredAuth, error)
 }
 
 // Provider resolves credentials for resolvers during a cluster scan.
@@ -154,6 +155,10 @@ func (p *Provider) AuthForImage(ctx context.Context, a core.Artifact) (authn.Aut
 			return auth, nil
 		}
 	}
+	if auth := p.globalBasicAuth(ctx, host, "image"); auth != nil {
+		p.rememberHost(host, auth)
+		return auth, nil
+	}
 
 	return nil, nil
 }
@@ -205,6 +210,9 @@ func (p *Provider) BasicForHelmRepo(ctx context.Context, repoURL string) (user, 
 			}
 		}
 	}
+	if user, pass, ok := p.globalBasicForHelm(ctx, key); ok {
+		return user, pass, true
+	}
 	return "", "", false
 }
 
@@ -251,6 +259,49 @@ func (p *Provider) configuredPullSecret(ctx context.Context, target, kind string
 		}
 	}
 	return ConfiguredAuth{}, false
+}
+
+func (p *Provider) globalBasicAuth(ctx context.Context, target, kind string) authn.Authenticator {
+	if p.store == nil {
+		return nil
+	}
+	rows, err := p.store.ListGlobalRegistryAuth(ctx)
+	if err != nil {
+		return nil
+	}
+	for _, row := range rows {
+		if row.Kind != kind || row.Method != "basic" {
+			continue
+		}
+		if kind == "image" && !strings.EqualFold(row.Target, target) {
+			continue
+		}
+		if row.Username != "" || row.Password != "" {
+			return &authn.Basic{Username: row.Username, Password: row.Password}
+		}
+	}
+	return nil
+}
+
+func (p *Provider) globalBasicForHelm(ctx context.Context, repoURL string) (user, pass string, ok bool) {
+	if p.store == nil {
+		return "", "", false
+	}
+	rows, err := p.store.ListGlobalRegistryAuth(ctx)
+	if err != nil {
+		return "", "", false
+	}
+	key := normalizeRepoURL(repoURL)
+	for _, row := range rows {
+		if row.Kind != "helm" || row.Method != "basic" {
+			continue
+		}
+		if normalizeRepoURL(row.Target) != key {
+			continue
+		}
+		return row.Username, row.Password, row.Username != "" || row.Password != ""
+	}
+	return "", "", false
 }
 
 func (p *Provider) authFromSecrets(ctx context.Context, namespace string, names []string, userKey, passKey, host string) (authn.Authenticator, error) {

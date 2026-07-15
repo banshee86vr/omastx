@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Sheet, Tag } from "../../ui/index.ts";
 import { ApiError } from "../../lib/api.ts";
-import { artifactQuery, driftTone, isUnverifiedMatch, kindLabel } from "./artifacts.ts";
+import { artifactHistoryQuery, artifactQuery, driftTone, isUnverifiedMatch, kindLabel } from "./artifacts.ts";
+import { DriftHistorySparkline } from "./DriftHistorySparkline.tsx";
 import styles from "./ArtifactDetailSheet.module.css";
 
 interface Props {
@@ -49,6 +50,10 @@ function artifactHubURLFor(kind: string, meta: Record<string, unknown> | null | 
 export function ArtifactDetailSheet({ artifactId, onClose }: Props) {
   const { data, isLoading, error } = useQuery({
     ...artifactQuery(artifactId ?? ""),
+    enabled: artifactId !== null,
+  });
+  const historyQuery = useQuery({
+    ...artifactHistoryQuery(artifactId ?? ""),
     enabled: artifactId !== null,
   });
 
@@ -166,6 +171,12 @@ export function ArtifactDetailSheet({ artifactId, onClose }: Props) {
             <dt>Last seen</dt>
             <dd>{new Date(data.last_seen).toLocaleString()}</dd>
           </dl>
+
+          <section className={styles.section}>
+            <h3 className={styles.sectionTitle}>Drift history</h3>
+            {historyQuery.isLoading && <p className={styles.muted}>Loading history…</p>}
+            {historyQuery.data && <DriftHistorySparkline history={historyQuery.data} />}
+          </section>
 
           <section className={styles.section}>
             <h3 className={styles.sectionTitle}>Candidate versions</h3>
