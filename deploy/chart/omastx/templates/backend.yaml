@@ -63,18 +63,26 @@ spec:
                 secretKeyRef:
                   name: {{ include "omastx.existingSecret" . }}
                   key: OMASTX_MASTER_KEY
-            - name: OMASTX_ADMIN_EMAIL
+            - name: OMASTX_GITHUB_CLIENT_ID
               valueFrom:
                 secretKeyRef:
                   name: {{ include "omastx.existingSecret" . }}
-                  key: OMASTX_ADMIN_EMAIL
-                  optional: true
-            - name: OMASTX_ADMIN_PASSWORD
+                  key: OMASTX_GITHUB_CLIENT_ID
+            - name: OMASTX_GITHUB_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ include "omastx.existingSecret" . }}
-                  key: OMASTX_ADMIN_PASSWORD
-                  optional: true
+                  key: OMASTX_GITHUB_CLIENT_SECRET
+            - name: OMASTX_GITHUB_ORG
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "omastx.existingSecret" . }}
+                  key: OMASTX_GITHUB_ORG
+            - name: OMASTX_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "omastx.existingSecret" . }}
+                  key: OMASTX_BASE_URL
           readinessProbe:
             httpGet:
               path: /healthz

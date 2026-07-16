@@ -9,27 +9,32 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/oauth2"
 
 	"github.com/banshee86vr/omastx/backend/internal/store/db"
 )
 
 const (
-	sessionCookie = "omastx_session"
-	csrfHeader    = "X-CSRF-Token"
-	sessionTTL    = 7 * 24 * time.Hour
+	sessionCookie   = "omastx_session"
+	oauthStateCookie = "omastx_oauth_state"
+	csrfHeader      = "X-CSRF-Token"
+	sessionTTL      = 7 * 24 * time.Hour
+	oauthStateTTL   = 10 * time.Minute
+	githubScope     = "read:org"
 )
 
 // AuthStore is the subset of store queries the auth handlers need;
 // satisfied by *db.Queries and by fakes in tests.
 type AuthStore interface {
-	GetUserByEmail(ctx context.Context, email string) (db.User, error)
 	CreateSession(ctx context.Context, arg db.CreateSessionParams) error
 	GetSession(ctx context.Context, tokenHash string) (db.GetSessionRow, error)
 	DeleteSession(ctx context.Context, tokenHash string) error
@@ -40,9 +45,9 @@ type ctxKey int
 const sessionKey ctxKey = 0
 
 type userDTO struct {
-	ID    string `json:"id"`
-	Email string `json:"email"`
-	Role  string `json:"role"`
+	Login     string `json:"login"`
+	Name      string `json:"name"`
+	AvatarURL string `json:"avatar_url"`
 }
 
 type authResponse struct {
@@ -50,8 +55,15 @@ type authResponse struct {
 	CSRFToken string  `json:"csrf_token"`
 }
 
-// dummyHash keeps bcrypt cost constant when the email is unknown (timing).
-var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("omastx-no-such-user"), bcrypt.DefaultCost)
+type githubUser struct {
+	Login     string `json:"login"`
+	Name      string `json:"name"`
+	AvatarURL string `json:"avatar_url"`
+}
+
+type githubOrgMembership struct {
+	State string `json:"state"`
+}
 
 func randomToken() string {
 	b := make([]byte, 32)
@@ -66,54 +78,198 @@ func hashToken(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
+func (s *Server) oauthConfig() *oauth2.Config {
+	endpoint := oauth2.Endpoint{
+		AuthURL:  "https://github.com/login/oauth/authorize",
+		TokenURL: "https://github.com/login/oauth/access_token",
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Email) == "" || req.Password == "" {
-		writeProblem(w, http.StatusBadRequest, "invalid_request", "Invalid sign-in request",
-			"Send a JSON body with email and password, then try again.")
+	if s.githubOAuthBaseOverride != "" {
+		base := strings.TrimRight(s.githubOAuthBaseOverride, "/")
+		endpoint = oauth2.Endpoint{
+			AuthURL:  base + "/login/oauth/authorize",
+			TokenURL: base + "/login/oauth/access_token",
+		}
+	}
+	return &oauth2.Config{
+		ClientID:     s.githubClientID,
+		ClientSecret: s.githubClientSecret,
+		RedirectURL:  s.baseURL + "/api/auth/github/callback",
+		Scopes:       []string{githubScope},
+		Endpoint:     endpoint,
+	}
+}
+
+func (s *Server) githubAPIBase() string {
+	if s.githubAPIBaseOverride != "" {
+		return strings.TrimRight(s.githubAPIBaseOverride, "/")
+	}
+	return "https://api.github.com"
+}
+
+func (s *Server) handleGitHubLogin(w http.ResponseWriter, r *http.Request) {
+	if s.githubClientID == "" || s.githubClientSecret == "" {
+		if s.devMode {
+			if _, err := s.createSession(w, r, githubUser{
+				Login: "dev", Name: "Dev User", AvatarURL: "",
+			}); err != nil {
+				s.internalError(w, err)
+				return
+			}
+			http.Redirect(w, r, "/", http.StatusFound)
+			return
+		}
+		writeProblem(w, http.StatusServiceUnavailable, "oauth_unconfigured", "GitHub sign-in unavailable",
+			"GitHub OAuth is not configured on this server. Contact your administrator.")
 		return
 	}
-	email := strings.ToLower(strings.TrimSpace(req.Email))
+	state := randomToken()
+	http.SetCookie(w, &http.Cookie{
+		Name:     oauthStateCookie,
+		Value:    state,
+		Path:     "/",
+		Expires:  time.Now().Add(oauthStateTTL),
+		HttpOnly: true,
+		Secure:   s.secureCookies,
+		SameSite: http.SameSiteLaxMode,
+	})
+	authURL := s.oauthConfig().AuthCodeURL(state, oauth2.AccessTypeOnline)
+	http.Redirect(w, r, authURL, http.StatusFound)
+}
 
-	// Throttle repeated failures per email and per client IP.
-	limitKeys := []string{"email:" + email, "ip:" + clientIP(r)}
-	for _, key := range limitKeys {
-		if s.limiter.blocked(key) {
-			writeProblem(w, http.StatusTooManyRequests, "too_many_attempts", "Too many sign-in attempts",
-				"Sign-in is temporarily blocked after repeated failures. Wait a few minutes, then try again.")
-			return
-		}
+func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
+	if errParam := r.URL.Query().Get("error"); errParam != "" {
+		s.redirectSignInError(w, r, "oauth_denied")
+		return
 	}
-	rejectCredentials := func() {
-		for _, key := range limitKeys {
-			s.limiter.recordFailure(key)
-		}
-		writeProblem(w, http.StatusUnauthorized, "invalid_credentials", "Couldn't sign you in",
-			"The email or password is incorrect. Check both and try again.")
+	stateCookie, err := r.Cookie(oauthStateCookie)
+	if err != nil || stateCookie.Value == "" {
+		writeProblem(w, http.StatusBadRequest, "oauth_state_missing", "Sign-in couldn't be completed",
+			"The OAuth state cookie is missing or expired. Start sign-in again from the sign-in page.")
+		return
+	}
+	gotState := r.URL.Query().Get("state")
+	if gotState == "" || subtle.ConstantTimeCompare([]byte(gotState), []byte(stateCookie.Value)) != 1 {
+		writeProblem(w, http.StatusBadRequest, "oauth_state_mismatch", "Sign-in couldn't be completed",
+			"The OAuth state didn't match. Start sign-in again from the sign-in page.")
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     oauthStateCookie,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   s.secureCookies,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	code := r.URL.Query().Get("code")
+	if code == "" {
+		writeProblem(w, http.StatusBadRequest, "oauth_code_missing", "Sign-in couldn't be completed",
+			"GitHub didn't return an authorization code. Start sign-in again from the sign-in page.")
+		return
 	}
 
-	user, err := s.store.GetUserByEmail(r.Context(), email)
+	ctx := r.Context()
+	token, err := s.oauthConfig().Exchange(ctx, code)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(req.Password))
-			rejectCredentials()
-			return
-		}
+		s.logger.Error("github token exchange failed", "error", err)
+		s.redirectSignInError(w, r, "oauth_failed")
+		return
+	}
+
+	user, err := s.fetchGitHubUser(ctx, token)
+	if err != nil {
+		s.logger.Error("github user fetch failed", "error", err)
+		s.redirectSignInError(w, r, "oauth_failed")
+		return
+	}
+
+	ok, err := s.isAuthorizedGitHubUser(ctx, token, user.Login)
+	if err != nil {
+		s.logger.Error("github authorization check failed", "error", err, "org", s.githubOrg)
+		s.redirectSignInError(w, r, "oauth_failed")
+		return
+	}
+	if !ok {
+		s.redirectSignInError(w, r, "not_authorized")
+		return
+	}
+
+	if _, err := s.createSession(w, r, user); err != nil {
 		s.internalError(w, err)
 		return
 	}
-	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)) != nil {
-		rejectCredentials()
-		return
-	}
-	for _, key := range limitKeys {
-		s.limiter.reset(key)
-	}
+	http.Redirect(w, r, "/", http.StatusFound)
+}
 
-	s.issueSession(w, r, user)
+func (s *Server) redirectSignInError(w http.ResponseWriter, r *http.Request, code string) {
+	http.Redirect(w, r, "/signin?error="+url.QueryEscape(code), http.StatusFound)
+}
+
+func (s *Server) fetchGitHubUser(ctx context.Context, token *oauth2.Token) (githubUser, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.githubAPIBase()+"/user", nil)
+	if err != nil {
+		return githubUser{}, err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	client := s.oauthConfig().Client(ctx, token)
+	resp, err := client.Do(req)
+	if err != nil {
+		return githubUser{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return githubUser{}, fmt.Errorf("GET /user: %s (%s)", resp.Status, strings.TrimSpace(string(body)))
+	}
+	var u githubUser
+	if err := json.NewDecoder(resp.Body).Decode(&u); err != nil {
+		return githubUser{}, err
+	}
+	if u.Login == "" {
+		return githubUser{}, errors.New("github user missing login")
+	}
+	return u, nil
+}
+
+func (s *Server) isAuthorizedGitHubUser(ctx context.Context, token *oauth2.Token, login string) (bool, error) {
+	if s.githubOrg == "" {
+		return false, errors.New("github org not configured")
+	}
+	// Solo installs: OMASTX_GITHUB_ORG may be a personal username instead of an org slug.
+	if strings.EqualFold(login, s.githubOrg) {
+		return true, nil
+	}
+	return s.checkGitHubOrgMembership(ctx, token)
+}
+
+func (s *Server) checkGitHubOrgMembership(ctx context.Context, token *oauth2.Token) (bool, error) {
+	path := fmt.Sprintf("%s/user/memberships/orgs/%s", s.githubAPIBase(), url.PathEscape(s.githubOrg))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	client := s.oauthConfig().Client(ctx, token)
+	resp, err := client.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusOK:
+		var m githubOrgMembership
+		if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+			return false, err
+		}
+		return m.State == "active", nil
+	case http.StatusNotFound, http.StatusForbidden:
+		return false, nil
+	default:
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return false, fmt.Errorf("org membership: %s (%s)", resp.Status, strings.TrimSpace(string(body)))
+	}
 }
 
 func (s *Server) handleDevLogin(w http.ResponseWriter, r *http.Request) {
@@ -122,33 +278,32 @@ func (s *Server) handleDevLogin(w http.ResponseWriter, r *http.Request) {
 			"This API route doesn't exist. Check the path and try again.")
 		return
 	}
-	email := strings.ToLower(strings.TrimSpace(s.devLoginEmail))
-	user, err := s.store.GetUserByEmail(r.Context(), email)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeProblem(w, http.StatusServiceUnavailable, "dev_user_missing", "Dev sign-in unavailable",
-				"The dev admin user hasn't been created yet. Restart the backend after migrations finish.")
-			return
-		}
-		s.internalError(w, err)
-		return
-	}
-	s.issueSession(w, r, user)
-}
-
-func (s *Server) issueSession(w http.ResponseWriter, r *http.Request, user db.User) {
-	token := randomToken()
-	csrf := randomToken()
-	expires := time.Now().Add(sessionTTL)
-	err := s.store.CreateSession(r.Context(), db.CreateSessionParams{
-		TokenHash: hashToken(token),
-		UserID:    user.ID,
-		CsrfToken: csrf,
-		ExpiresAt: pgtype.Timestamptz{Time: expires, Valid: true},
+	csrf, err := s.createSession(w, r, githubUser{
+		Login:     "dev",
+		Name:      "Dev User",
+		AvatarURL: "",
 	})
 	if err != nil {
 		s.internalError(w, err)
 		return
+	}
+	writeAuthJSON(w, githubUser{Login: "dev", Name: "Dev User"}, csrf)
+}
+
+func (s *Server) createSession(w http.ResponseWriter, r *http.Request, user githubUser) (string, error) {
+	token := randomToken()
+	csrf := randomToken()
+	expires := time.Now().Add(sessionTTL)
+	err := s.store.CreateSession(r.Context(), db.CreateSessionParams{
+		TokenHash:       hashToken(token),
+		GithubLogin:     user.Login,
+		GithubName:      user.Name,
+		GithubAvatarUrl: user.AvatarURL,
+		CsrfToken:       csrf,
+		ExpiresAt:       pgtype.Timestamptz{Time: expires, Valid: true},
+	})
+	if err != nil {
+		return "", err
 	}
 
 	http.SetCookie(w, &http.Cookie{
@@ -160,8 +315,16 @@ func (s *Server) issueSession(w http.ResponseWriter, r *http.Request, user db.Us
 		Secure:   s.secureCookies,
 		SameSite: http.SameSiteLaxMode,
 	})
+	return csrf, nil
+}
+
+func writeAuthJSON(w http.ResponseWriter, user githubUser, csrf string) {
 	writeJSON(w, http.StatusOK, authResponse{
-		User:      userDTO{ID: user.ID.String(), Email: user.Email, Role: user.Role},
+		User: userDTO{
+			Login:     user.Login,
+			Name:      user.Name,
+			AvatarURL: user.AvatarURL,
+		},
 		CSRFToken: csrf,
 	})
 }
@@ -187,7 +350,11 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	sess := sessionFrom(r.Context())
 	writeJSON(w, http.StatusOK, authResponse{
-		User:      userDTO{ID: sess.UserID.String(), Email: sess.Email, Role: sess.Role},
+		User: userDTO{
+			Login:     sess.GithubLogin,
+			Name:      sess.GithubName,
+			AvatarURL: sess.GithubAvatarUrl,
+		},
 		CSRFToken: sess.CsrfToken,
 	})
 }
@@ -237,15 +404,4 @@ func (s *Server) requireCSRF(next http.Handler) http.Handler {
 func sessionFrom(ctx context.Context) db.GetSessionRow {
 	sess, _ := ctx.Value(sessionKey).(db.GetSessionRow)
 	return sess
-}
-
-// clientIP returns the real TCP peer address without the port. We deliberately
-// do not consult X-Forwarded-For / X-Real-IP here (spoofable), so the per-IP
-// login limit can't be evaded by forging headers.
-func clientIP(r *http.Request) string {
-	host := r.RemoteAddr
-	if i := strings.LastIndex(host, ":"); i > 0 {
-		host = host[:i]
-	}
-	return host
 }

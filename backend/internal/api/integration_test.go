@@ -11,17 +11,14 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/banshee86vr/omastx/backend/internal/store"
 	"github.com/banshee86vr/omastx/backend/internal/store/db"
 )
 
-// TestLoginIntegration runs the full login flow against a dockerized Postgres
-// (SPEC §7: every API mutation covered by an integration test). Set
-// OMASTX_TEST_DATABASE_URL to reuse an existing database; otherwise a
-// throwaway postgres:16 container is started. Skips when Docker is absent.
-func TestLoginIntegration(t *testing.T) {
+// TestSessionIntegration runs session auth against dockerized Postgres (SPEC §7).
+func TestSessionIntegration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("short mode")
 	}
@@ -41,26 +38,8 @@ func TestLoginIntegration(t *testing.T) {
 	t.Cleanup(pool.Close)
 	queries := db.New(pool)
 
-	// Bootstrap a user the way main does (bcrypt via the login handler's cost).
 	h := newTestServer(queries)
-	if _, err := queries.CreateUser(ctx, db.CreateUserParams{
-		Email:        "it@example.com",
-		PasswordHash: mustHash(t, "integration-pass"),
-		Role:         "admin",
-	}); err != nil {
-		t.Fatalf("create user: %v", err)
-	}
-
-	login := doJSON(t, h, http.MethodPost, "/api/auth/login",
-		`{"email":"it@example.com","password":"integration-pass"}`, nil)
-	if login.Code != http.StatusOK {
-		t.Fatalf("login: %d %s", login.Code, login.Body)
-	}
-	cookie := findSessionCookie(login)
-	var auth authResponse
-	if err := json.Unmarshal(login.Body.Bytes(), &auth); err != nil {
-		t.Fatal(err)
-	}
+	cookie, csrf := seedTestSession(ctx, t, queries, "it-user")
 
 	me := doJSON(t, h, http.MethodGet, "/api/auth/me", "", func(r *http.Request) { r.AddCookie(cookie) })
 	if me.Code != http.StatusOK {
@@ -69,23 +48,14 @@ func TestLoginIntegration(t *testing.T) {
 
 	logout := doJSON(t, h, http.MethodPost, "/api/auth/logout", "", func(r *http.Request) {
 		r.AddCookie(cookie)
-		r.Header.Set(csrfHeader, auth.CSRFToken)
+		r.Header.Set(csrfHeader, csrf)
 	})
 	if logout.Code != http.StatusNoContent {
 		t.Fatalf("logout: %d %s", logout.Code, logout.Body)
 	}
 
 	t.Run("cluster mutations", func(t *testing.T) {
-		authed := func(r *http.Request) {
-			login := doJSON(t, h, http.MethodPost, "/api/auth/login",
-				`{"email":"it@example.com","password":"integration-pass"}`, nil)
-			var a authResponse
-			if err := json.Unmarshal(login.Body.Bytes(), &a); err != nil {
-				t.Fatal(err)
-			}
-			r.AddCookie(findSessionCookie(login))
-			r.Header.Set(csrfHeader, a.CSRFToken)
-		}
+		authed := authedRequest(t, ctx, queries)
 
 		created := doJSON(t, h, http.MethodPost, "/api/clusters",
 			kubeconfigJSON(`,"name":"it-cluster","context":"prod-eu"`), authed)
@@ -97,7 +67,6 @@ func TestLoginIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// Encrypted at rest: the raw column must not contain the plaintext.
 		var raw []byte
 		if err := pool.QueryRow(ctx,
 			"SELECT kubeconfig_enc FROM clusters WHERE id = $1", dto.ID).Scan(&raw); err != nil {
@@ -122,13 +91,31 @@ func TestLoginIntegration(t *testing.T) {
 	})
 }
 
-func mustHash(t *testing.T, password string) string {
+func seedTestSession(ctx context.Context, t *testing.T, queries *db.Queries, login string) (*http.Cookie, string) {
 	t.Helper()
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
-	if err != nil {
-		t.Fatal(err)
+	token := randomToken()
+	csrf := randomToken()
+	expires := time.Now().Add(sessionTTL)
+	if err := queries.CreateSession(ctx, db.CreateSessionParams{
+		TokenHash:       hashToken(token),
+		GithubLogin:     login,
+		GithubName:      "Test User",
+		GithubAvatarUrl: "",
+		CsrfToken:       csrf,
+		ExpiresAt:       pgtype.Timestamptz{Time: expires, Valid: true},
+	}); err != nil {
+		t.Fatalf("create session: %v", err)
 	}
-	return string(hash)
+	return &http.Cookie{Name: sessionCookie, Value: token}, csrf
+}
+
+func authedRequest(t *testing.T, ctx context.Context, queries *db.Queries) func(*http.Request) {
+	t.Helper()
+	cookie, csrf := seedTestSession(ctx, t, queries, "testuser")
+	return func(r *http.Request) {
+		r.AddCookie(cookie)
+		r.Header.Set(csrfHeader, csrf)
+	}
 }
 
 // startPostgres launches a disposable postgres:16 container and returns its URL.

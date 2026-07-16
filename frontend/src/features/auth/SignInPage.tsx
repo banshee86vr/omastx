@@ -1,19 +1,31 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { api, setCsrfToken, ApiError, type Problem } from "../../lib/api.ts";
-import { meQuery } from "./auth.ts";
 import { isDevAutoLogin, tryAutoDevLogin } from "./devLogin.ts";
-import { Button, Field } from "../../ui/index.ts";
+import { Button } from "../../ui/index.ts";
 import { AmmoniteMark } from "../../ui/AmmoniteMark.tsx";
 import styles from "./SignInPage.module.css";
+
+const signInErrors: Record<string, { title: string; detail: string }> = {
+  not_authorized: {
+    title: "You're not allowed to sign in",
+    detail:
+      "Use a GitHub account that is an active member of the configured organization, or matches the configured solo username.",
+  },
+  oauth_denied: {
+    title: "GitHub sign-in was cancelled",
+    detail: "Authorize Omastx on GitHub to continue, or try again.",
+  },
+  oauth_failed: {
+    title: "GitHub sign-in failed",
+    detail: "Something went wrong talking to GitHub. Try again in a moment.",
+  },
+};
 
 export function SignInPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [problem, setProblem] = useState<Problem | null>(null);
+  const search = useSearch({ from: "/signin" }) as { error?: string | undefined };
   const [busy, setBusy] = useState(isDevAutoLogin());
 
   useEffect(() => {
@@ -37,28 +49,10 @@ export function SignInPage() {
     };
   }, [navigate, queryClient]);
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setProblem(null);
-    try {
-      const auth = await api.login(email, password);
-      setCsrfToken(auth.csrf_token);
-      queryClient.setQueryData(meQuery.queryKey, auth);
-      await navigate({ to: "/" });
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setProblem(err.problem);
-      } else {
-        setProblem({
-          code: "unreachable",
-          title: "Couldn't reach the server",
-          detail: "Check that the backend is running, then try again.",
-        });
-      }
-    } finally {
-      setBusy(false);
-    }
+  const problem = search.error ? signInErrors[search.error] : null;
+
+  function onGitHubSignIn() {
+    window.location.href = "/api/auth/github/login";
   }
 
   return (
@@ -71,33 +65,17 @@ export function SignInPage() {
             <p className={styles.tagline}>How far has your fleet drifted?</p>
           </div>
         </div>
-        <form className={styles.form} onSubmit={onSubmit}>
-          <Field
-            label="Email"
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          <Field
-            label="Password"
-            type="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
+        <div className={styles.form}>
           {problem && (
             <div className={styles.error} role="alert">
               <div className={styles.errorTitle}>{problem.title}</div>
               <div className={styles.errorDetail}>{problem.detail}</div>
             </div>
           )}
-          <Button type="submit" disabled={busy}>
-            {busy ? (isDevAutoLogin() ? "Opening…" : "Signing in…") : "Sign in"}
+          <Button type="button" disabled={busy} onClick={onGitHubSignIn}>
+            {busy ? "Opening…" : "Sign in with GitHub"}
           </Button>
-        </form>
+        </div>
       </main>
     </div>
   );

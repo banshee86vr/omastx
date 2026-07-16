@@ -105,17 +105,11 @@ type Scan struct {
 }
 
 type Session struct {
-	TokenHash string             `json:"token_hash"`
-	UserID    uuid.UUID          `json:"user_id"`
-	CsrfToken string             `json:"csrf_token"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
-}
-
-type User struct {
-	ID           uuid.UUID          `json:"id"`
-	Email        string             `json:"email"`
-	PasswordHash string             `json:"password_hash"`
-	Role         string             `json:"role"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	TokenHash       string             `json:"token_hash"`
+	CsrfToken       string             `json:"csrf_token"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
+	GithubLogin     string             `json:"github_login"`
+	GithubName      string             `json:"github_name"`
+	GithubAvatarUrl string             `json:"github_avatar_url"`
 }

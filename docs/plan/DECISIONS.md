@@ -228,3 +228,19 @@ endpoint and x-axis scale rationale for the sounding chart are retired with it):
 Like D7, only the *rendering* of §4.5 changes by owner decision; drift semantics, status
 colors, tokens, keyboard access, and the sr-only data table remain per SPEC.
 
+## D19: GitHub OAuth org-gated auth replaces local user management (owner request, 2026-07-16)
+
+Local email/password auth and the admin/user role model are removed. Sign-in uses a
+GitHub OAuth App (`GET /api/auth/github/login` → callback) with `read:org` scope;
+only active members of `OMASTX_GITHUB_ORG` receive a session. Every authenticated org
+member has full access (settings, clusters, export) — no roles, no user CRUD.
+
+The `users` table is dropped; `sessions` stores `github_login`, `github_name`, and
+`github_avatar_url` instead of `user_id`. Cookie sessions + CSRF on mutations are
+unchanged (SPEC §2.6). `OMASTX_DEV=true` keeps passwordless `POST /api/auth/dev-login`
+for local compose/CI; production requires `OMASTX_GITHUB_CLIENT_ID`,
+`OMASTX_GITHUB_CLIENT_SECRET`, `OMASTX_GITHUB_ORG`, and `OMASTX_BASE_URL`.
+
+Supersedes the local-auth portions of SPEC §1.4/§2.5/§2.6/§5.2 and the user-management
+parts of D3/D18; the `sessions` table additive deviation in D3 remains for session state.
+

@@ -110,12 +110,47 @@
   flex-shrink: 0;
 }
 
-.email {
+.userIdentity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.userMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.avatar,
+.avatarPlaceholder {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius);
+  flex-shrink: 0;
+}
+
+.avatarPlaceholder {
+  background: var(--shoal);
+}
+
+.displayName {
+  font-size: var(--text-sm);
+  color: var(--foam);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.login {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--mist);
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .main {

@@ -2,11 +2,9 @@ import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
-  type AdminUser,
   type AppSettings,
   type PutRegistryAuthInput,
 } from "../../lib/api.ts";
-import { meQuery } from "../auth/auth.ts";
 import { Button, Field, useToast } from "../../ui/index.ts";
 import { type Theme, getStoredTheme, toggleTheme } from "../../lib/theme.ts";
 import styles from "./SettingsPage.module.css";
@@ -16,36 +14,17 @@ const settingsQueryKey = ["settings"];
 export function SettingsPage() {
   const queryClient = useQueryClient();
   const { toast, toastError } = useToast();
-  const { data: auth } = useQuery(meQuery);
   const { data, isLoading } = useQuery({
     queryKey: settingsQueryKey,
     queryFn: () => api.getSettings(),
-    enabled: auth?.user.role === "admin",
-  });
-  const { data: users } = useQuery({
-    queryKey: ["users"],
-    queryFn: () => api.listUsers(),
-    enabled: auth?.user.role === "admin",
   });
 
   const [theme, setTheme] = useState<Theme>(() => getStoredTheme());
   const [ttl, setTtl] = useState<AppSettings | null>(null);
-  const [newEmail, setNewEmail] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [newRole, setNewRole] = useState("user");
   const [credKind, setCredKind] = useState<"image" | "helm">("image");
   const [credTarget, setCredTarget] = useState("");
   const [credUser, setCredUser] = useState("");
   const [credPass, setCredPass] = useState("");
-
-  if (auth && auth.user.role !== "admin") {
-    return (
-      <div className={styles.page}>
-        <h1 className={styles.headline}>Settings</h1>
-        <p className={styles.muted}>Only administrators can change application settings.</p>
-      </div>
-    );
-  }
 
   const settings = ttl ?? data?.settings;
 
@@ -71,17 +50,6 @@ export function SettingsPage() {
       toastError("Couldn't save credentials", err instanceof Error ? err.message : "Try again."),
   });
 
-  const createUser = useMutation({
-    mutationFn: () => api.createUser({ email: newEmail, password: newPassword, role: newRole }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["users"] });
-      toast("User created", `${newEmail} can sign in now.`);
-      setNewEmail("");
-      setNewPassword("");
-    },
-    onError: (err) => toastError("Couldn't create user", err instanceof Error ? err.message : "Try again."),
-  });
-
   function onTtlSubmit(e: FormEvent) {
     e.preventDefault();
     if (!settings) return;
@@ -99,11 +67,6 @@ export function SettingsPage() {
     });
   }
 
-  function onCreateUser(e: FormEvent) {
-    e.preventDefault();
-    void createUser.mutateAsync();
-  }
-
   function onThemeToggle() {
     setTheme(toggleTheme(theme));
   }
@@ -112,7 +75,7 @@ export function SettingsPage() {
     <div className={styles.page}>
       <header>
         <h1 className={styles.headline}>Settings</h1>
-        <p className={styles.subline}>Users, theme, resolver cache TTLs, and global registry credentials.</p>
+        <p className={styles.subline}>Theme, resolver cache TTLs, and global registry credentials.</p>
       </header>
 
       {isLoading && <p className={styles.muted}>Loading settings…</p>}
@@ -169,41 +132,6 @@ export function SettingsPage() {
       )}
 
       <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>Users</h2>
-        <ul className={styles.userList}>
-          {users?.map((u) => (
-            <UserRow key={u.id} user={u} />
-          ))}
-        </ul>
-        <form className={styles.form} onSubmit={onCreateUser}>
-          <Field
-            label="Email"
-            type="email"
-            value={newEmail}
-            onChange={(e) => setNewEmail(e.target.value)}
-            required
-          />
-          <Field
-            label="Password"
-            type="password"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            required
-          />
-          <label className={styles.label}>
-            Role
-            <select value={newRole} onChange={(e) => setNewRole(e.target.value)}>
-              <option value="user">user</option>
-              <option value="admin">admin</option>
-            </select>
-          </label>
-          <Button type="submit" variant="primary" disabled={createUser.isPending}>
-            Add user
-          </Button>
-        </form>
-      </section>
-
-      <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Global registry credentials</h2>
         <p className={styles.muted}>
           Fallback when no per-cluster credential matches a private registry or Helm repo.
@@ -242,28 +170,5 @@ export function SettingsPage() {
         </form>
       </section>
     </div>
-  );
-}
-
-function UserRow({ user }: { user: AdminUser }) {
-  const queryClient = useQueryClient();
-  const { toast, toastError } = useToast();
-  const remove = useMutation({
-    mutationFn: () => api.deleteUser(user.id),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["users"] });
-      toast("User removed", `${user.email} can no longer sign in.`);
-    },
-    onError: (err) => toastError("Couldn't remove user", err instanceof Error ? err.message : "Try again."),
-  });
-  return (
-    <li className={styles.userRow}>
-      <span>
-        {user.email} <span className={styles.muted}>({user.role})</span>
-      </span>
-      <Button variant="quiet" onClick={() => void remove.mutateAsync()}>
-        Remove
-      </Button>
-    </li>
   );
 }

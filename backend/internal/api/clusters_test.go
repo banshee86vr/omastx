@@ -12,6 +12,8 @@ import (
 
 	"github.com/banshee86vr/omastx/backend/internal/cluster"
 	"github.com/banshee86vr/omastx/backend/internal/crypto"
+	"github.com/banshee86vr/omastx/backend/internal/store/db"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const testKubeconfig = `apiVersion: v1
@@ -68,21 +70,21 @@ func allowAllCheckResult() cluster.CheckResult {
 }
 
 // signIn returns a request modifier carrying a valid session + CSRF token.
-func signIn(t *testing.T, h http.Handler, store *fakeStore) func(*http.Request) {
+func signIn(t *testing.T, _ http.Handler, store *fakeStore) func(*http.Request) {
 	t.Helper()
-	store.addUser("op@example.com")
-	login := doJSON(t, h, http.MethodPost, "/api/auth/login", `{"email":"op@example.com","password":"secret"}`, nil)
-	if login.Code != http.StatusOK {
-		t.Fatalf("login: %d %s", login.Code, login.Body)
-	}
-	cookie := findSessionCookie(login)
-	var auth authResponse
-	if err := json.Unmarshal(login.Body.Bytes(), &auth); err != nil {
-		t.Fatal(err)
+	token := randomToken()
+	csrf := randomToken()
+	store.sessions[hashToken(token)] = db.GetSessionRow{
+		TokenHash:       hashToken(token),
+		GithubLogin:     "op",
+		GithubName:      "Operator",
+		GithubAvatarUrl: "",
+		CsrfToken:       csrf,
+		ExpiresAt:       pgtype.Timestamptz{Time: time.Now().Add(sessionTTL), Valid: true},
 	}
 	return func(req *http.Request) {
-		req.AddCookie(cookie)
-		req.Header.Set(csrfHeader, auth.CSRFToken)
+		req.AddCookie(&http.Cookie{Name: sessionCookie, Value: token})
+		req.Header.Set(csrfHeader, csrf)
 	}
 }
 
@@ -278,33 +280,16 @@ func TestClusterEndpointsRequireAuthAndCSRF(t *testing.T) {
 		}
 	})
 	t.Run("mutation without csrf", func(t *testing.T) {
-		store.addUser("op@example.com")
-		login := doJSON(t, h, http.MethodPost, "/api/auth/login", `{"email":"op@example.com","password":"secret"}`, nil)
-		cookie := findSessionCookie(login)
+		authed := signIn(t, h, store)
 		rec := doJSON(t, h, http.MethodPost, "/api/clusters", kubeconfigJSON(`,"name":"x","context":"prod-eu"`),
-			func(req *http.Request) { req.AddCookie(cookie) })
+			func(req *http.Request) {
+				authed(req)
+				req.Header.Del(csrfHeader)
+			})
 		if rec.Code != http.StatusForbidden {
 			t.Errorf("status = %d, want 403", rec.Code)
 		}
 	})
-}
-
-func TestLoginRateLimited(t *testing.T) {
-	store := newFakeStore()
-	store.addUser("admin@example.com")
-	h := newTestServer(store)
-
-	for range 5 {
-		rec := doJSON(t, h, http.MethodPost, "/api/auth/login", `{"email":"admin@example.com","password":"wrong"}`, nil)
-		if rec.Code != http.StatusUnauthorized {
-			t.Fatalf("expected 401 while under the limit, got %d", rec.Code)
-		}
-	}
-	rec := doJSON(t, h, http.MethodPost, "/api/auth/login", `{"email":"admin@example.com","password":"secret"}`, nil)
-	if rec.Code != http.StatusTooManyRequests {
-		t.Fatalf("status = %d, want 429 after repeated failures (even with correct password)", rec.Code)
-	}
-	assertProblemCode(t, rec, "too_many_attempts")
 }
 
 func assertProblemCode(t *testing.T, rec *httptest.ResponseRecorder, want string) {

@@ -38,6 +38,9 @@ const rootRoute = createRootRouteWithContext<RouterContext>()({
 const signInRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/signin",
+  validateSearch: (search: Record<string, unknown>) => ({
+    error: typeof search.error === "string" ? search.error : undefined,
+  }),
   component: SignInPage,
 });
 
@@ -52,7 +55,7 @@ const authedRoute = createRoute({
       if (await tryAutoDevLogin(context.queryClient)) {
         return;
       }
-      throw redirect({ to: "/signin" });
+      throw redirect({ to: "/signin", search: { error: undefined } });
     }
   },
   component: AppFrame,

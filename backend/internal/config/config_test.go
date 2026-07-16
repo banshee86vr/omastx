@@ -50,8 +50,6 @@ func TestFromEnvDevDefaults(t *testing.T) {
 	t.Setenv("OMASTX_DEV", "true")
 	t.Setenv("DATABASE_URL", "postgres://localhost/omastx")
 	t.Setenv("OMASTX_MASTER_KEY", "")
-	t.Setenv("OMASTX_ADMIN_EMAIL", "")
-	t.Setenv("OMASTX_ADMIN_PASSWORD", "")
 
 	cfg, err := FromEnv()
 	if err != nil {
@@ -63,7 +61,18 @@ func TestFromEnvDevDefaults(t *testing.T) {
 	if len(cfg.MasterKey) != 32 {
 		t.Fatalf("MasterKey length = %d, want 32", len(cfg.MasterKey))
 	}
-	if cfg.AdminEmail != DevAdminEmail || cfg.AdminPassword != DevAdminPassword {
-		t.Fatalf("admin defaults = %q / %q", cfg.AdminEmail, cfg.AdminPassword)
+}
+
+func TestFromEnvRequiresGitHubInProduction(t *testing.T) {
+	t.Setenv("OMASTX_DEV", "")
+	t.Setenv("DATABASE_URL", "postgres://localhost/omastx")
+	t.Setenv("OMASTX_MASTER_KEY", strings.Repeat("ab", 32))
+	t.Setenv("OMASTX_GITHUB_CLIENT_ID", "")
+	t.Setenv("OMASTX_GITHUB_CLIENT_SECRET", "")
+	t.Setenv("OMASTX_GITHUB_ORG", "")
+	t.Setenv("OMASTX_BASE_URL", "")
+
+	if _, err := FromEnv(); err == nil || !strings.Contains(err.Error(), "GITHUB") {
+		t.Fatalf("err = %v, want GitHub config error", err)
 	}
 }

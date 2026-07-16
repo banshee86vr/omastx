@@ -31,5 +31,5 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
 
 {{- define "omastx.existingSecret" -}}
-{{- required "existingSecret is required: create a Secret with OMASTX_MASTER_KEY, OMASTX_ADMIN_EMAIL, OMASTX_ADMIN_PASSWORD and DATABASE_URL (or POSTGRES_PASSWORD with postgres.internal.enabled), then set existingSecret to its name" .Values.existingSecret -}}
+{{- required "existingSecret is required: create a Secret with OMASTX_MASTER_KEY, OMASTX_GITHUB_CLIENT_ID, OMASTX_GITHUB_CLIENT_SECRET, OMASTX_GITHUB_ORG, OMASTX_BASE_URL and DATABASE_URL (or POSTGRES_PASSWORD with postgres.internal.enabled), then set existingSecret to its name" .Values.existingSecret -}}
 {{- end -}}

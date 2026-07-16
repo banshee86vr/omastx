@@ -3,16 +3,13 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"golang.org/x/crypto/bcrypt"
 
 	"github.com/banshee86vr/omastx/backend/internal/crypto"
 	"github.com/banshee86vr/omastx/backend/internal/store/db"
@@ -27,39 +24,10 @@ type SettingsStore interface {
 	DeleteGlobalRegistryAuth(ctx context.Context, arg db.DeleteGlobalRegistryAuthParams) error
 }
 
-// UserAdminStore is the subset of store queries for user management.
-type UserAdminStore interface {
-	ListUsers(ctx context.Context) ([]db.ListUsersRow, error)
-	CreateUser(ctx context.Context, arg db.CreateUserParams) (db.User, error)
-	UpdateUser(ctx context.Context, arg db.UpdateUserParams) error
-	DeleteUser(ctx context.Context, id uuid.UUID) (int64, error)
-	CountUsersByRole(ctx context.Context, role string) (int64, error)
-	GetUserByID(ctx context.Context, id uuid.UUID) (db.User, error)
-}
-
 type settingsDTO struct {
 	OciTTLHours         int `json:"oci_ttl_hours"`
 	HelmrepoTTLHours    int `json:"helmrepo_ttl_hours"`
 	ArtifacthubTTLHours int `json:"artifacthub_ttl_hours"`
-}
-
-type adminUserDTO struct {
-	ID        string    `json:"id"`
-	Email     string    `json:"email"`
-	Role      string    `json:"role"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
-func (s *Server) requireAdmin(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sess := sessionFrom(r.Context())
-		if sess.Role != "admin" {
-			writeProblem(w, http.StatusForbidden, "forbidden", "Admin access required",
-				"Only administrators can change settings or manage users.")
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }
 
 func intervalToHours(iv pgtype.Interval) int {
@@ -209,178 +177,6 @@ func (s *Server) handleDeleteGlobalRegistryAuth(w http.ResponseWriter, r *http.R
 		Target: target, Kind: kind,
 	}); err != nil {
 		s.internalError(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.store.ListUsers(r.Context())
-	if err != nil {
-		s.internalError(w, err)
-		return
-	}
-	users := make([]adminUserDTO, 0, len(rows))
-	for _, row := range rows {
-		users = append(users, adminUserDTO{
-			ID: row.ID.String(), Email: row.Email, Role: row.Role,
-			CreatedAt: row.CreatedAt.Time,
-		})
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"users": users})
-}
-
-func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-		Role     string `json:"role"`
-	}
-	if !readJSON(w, r, &req) {
-		return
-	}
-	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
-	if req.Email == "" || req.Password == "" {
-		writeProblem(w, http.StatusBadRequest, "invalid_request", "Missing fields",
-			"Provide email and password for the new user.")
-		return
-	}
-	if req.Role == "" {
-		req.Role = "user"
-	}
-	if req.Role != "admin" && req.Role != "user" {
-		writeProblem(w, http.StatusBadRequest, "invalid_role", "Invalid role",
-			"Role must be admin or user.")
-		return
-	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-	if err != nil {
-		s.internalError(w, err)
-		return
-	}
-	user, err := s.store.CreateUser(r.Context(), db.CreateUserParams{
-		Email: req.Email, PasswordHash: string(hash), Role: req.Role,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeProblem(w, http.StatusConflict, "email_taken", "Email already in use",
-				"Pick a different email for this user.")
-			return
-		}
-		s.internalError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, adminUserDTO{
-		ID: user.ID.String(), Email: user.Email, Role: user.Role, CreatedAt: user.CreatedAt.Time,
-	})
-}
-
-func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
-	if err != nil {
-		writeProblem(w, http.StatusBadRequest, "invalid_id", "Invalid user id", "Check the user id and try again.")
-		return
-	}
-	var req struct {
-		Role     *string `json:"role"`
-		Password *string `json:"password"`
-	}
-	if !readJSON(w, r, &req) {
-		return
-	}
-	existing, err := s.store.GetUserByID(r.Context(), id)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeProblem(w, http.StatusNotFound, "user_not_found", "User not found",
-				"This user doesn't exist. Refresh the list and try again.")
-			return
-		}
-		s.internalError(w, err)
-		return
-	}
-	role := existing.Role
-	if req.Role != nil {
-		if *req.Role != "admin" && *req.Role != "user" {
-			writeProblem(w, http.StatusBadRequest, "invalid_role", "Invalid role",
-				"Role must be admin or user.")
-			return
-		}
-		if existing.Role == "admin" && *req.Role != "admin" {
-			count, err := s.store.CountUsersByRole(r.Context(), "admin")
-			if err != nil {
-				s.internalError(w, err)
-				return
-			}
-			if count <= 1 {
-				writeProblem(w, http.StatusConflict, "last_admin", "Can't demote the last admin",
-					"Create another admin first, then change this user's role.")
-				return
-			}
-		}
-		role = *req.Role
-	}
-	passHash := ""
-	if req.Password != nil && *req.Password != "" {
-		hash, err := bcrypt.GenerateFromPassword([]byte(*req.Password), bcrypt.DefaultCost)
-		if err != nil {
-			s.internalError(w, err)
-			return
-		}
-		passHash = string(hash)
-	}
-	if err := s.store.UpdateUser(r.Context(), db.UpdateUserParams{
-		ID: id, Role: role, PasswordHash: passHash,
-	}); err != nil {
-		s.internalError(w, err)
-		return
-	}
-	updated, err := s.store.GetUserByID(r.Context(), id)
-	if err != nil {
-		s.internalError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, adminUserDTO{
-		ID: updated.ID.String(), Email: updated.Email, Role: updated.Role,
-		CreatedAt: updated.CreatedAt.Time,
-	})
-}
-
-func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
-	if err != nil {
-		writeProblem(w, http.StatusBadRequest, "invalid_id", "Invalid user id", "Check the user id and try again.")
-		return
-	}
-	existing, err := s.store.GetUserByID(r.Context(), id)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeProblem(w, http.StatusNotFound, "user_not_found", "User not found",
-				"This user doesn't exist. Refresh the list and try again.")
-			return
-		}
-		s.internalError(w, err)
-		return
-	}
-	if existing.Role == "admin" {
-		count, err := s.store.CountUsersByRole(r.Context(), "admin")
-		if err != nil {
-			s.internalError(w, err)
-			return
-		}
-		if count <= 1 {
-			writeProblem(w, http.StatusConflict, "last_admin", "Can't delete the last admin",
-				"Create another admin first, then remove this user.")
-			return
-		}
-	}
-	affected, err := s.store.DeleteUser(r.Context(), id)
-	if err != nil {
-		s.internalError(w, err)
-		return
-	}
-	if affected == 0 {
-		writeProblem(w, http.StatusNotFound, "user_not_found", "User not found",
-			"This user doesn't exist. Refresh the list and try again.")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

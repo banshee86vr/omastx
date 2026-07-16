@@ -2,8 +2,10 @@
 # The chart never templates these values inline. Create it with:
 #   kubectl create secret generic omastx \
 #     --from-literal=OMASTX_MASTER_KEY=$(openssl rand -hex 32) \
-#     --from-literal=OMASTX_ADMIN_EMAIL=admin@example.com \
-#     --from-literal=OMASTX_ADMIN_PASSWORD=... \
+#     --from-literal=OMASTX_GITHUB_CLIENT_ID=... \
+#     --from-literal=OMASTX_GITHUB_CLIENT_SECRET=... \
+#     --from-literal=OMASTX_GITHUB_ORG=your-org \
+#     --from-literal=OMASTX_BASE_URL=https://omastx.example.com \
 #     --from-literal=DATABASE_URL=postgres://user:pass@host:5432/omastx
 # When postgres.internal.enabled=true, DATABASE_URL may be omitted from the
 # Secret; the chart points the backend at the bundled instance instead, and the

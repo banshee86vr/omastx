@@ -8,9 +8,11 @@ frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 
-# Env & secrets
+# Env & secrets (any directory; keep example templates tracked)
 .env
-deploy/.env
+.env*
+!.env.example
+!**/.env.example
 
 # Helm
 deploy/chart/*.tgz

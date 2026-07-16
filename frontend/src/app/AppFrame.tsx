@@ -32,11 +32,14 @@ export function AppFrame() {
       await api.logout();
       setCsrfToken(null);
       queryClient.removeQueries({ queryKey: meQuery.queryKey });
-      await navigate({ to: "/signin" });
+      await navigate({ to: "/signin", search: { error: undefined } });
     } catch {
       toastError("Couldn't sign you out", "The server didn't respond. Try again.");
     }
   }
+
+  const displayName = auth?.user.name?.trim();
+  const login = auth?.user.login;
 
   return (
     <div className={styles.frame}>
@@ -76,16 +79,32 @@ export function AppFrame() {
           <Link to="/artifacts" className={styles.navLink}>
             Artifacts
           </Link>
-          {auth?.user.role === "admin" && (
-            <Link to="/settings" className={styles.navLink}>
-              Settings
-            </Link>
-          )}
+          <Link to="/settings" className={styles.navLink}>
+            Settings
+          </Link>
         </div>
 
         {auth && (
           <div className={styles.user}>
-            <span className={styles.email}>{auth.user.email}</span>
+            <div className={styles.userIdentity}>
+              {auth.user.avatar_url ? (
+                <img
+                  className={styles.avatar}
+                  src={auth.user.avatar_url}
+                  alt=""
+                  width={32}
+                  height={32}
+                />
+              ) : (
+                <div className={styles.avatarPlaceholder} aria-hidden="true" />
+              )}
+              <div className={styles.userMeta}>
+                {displayName ? (
+                  <span className={styles.displayName}>{displayName}</span>
+                ) : null}
+                <span className={styles.login}>{login}</span>
+              </div>
+            </div>
             <Button variant="quiet" onClick={onSignOut}>
               Sign out
             </Button>

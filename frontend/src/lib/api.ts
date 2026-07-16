@@ -21,9 +21,9 @@ export class ApiError extends Error {
 }
 
 export const userSchema = z.object({
-  id: z.string(),
-  email: z.string(),
-  role: z.string(),
+  login: z.string(),
+  name: z.string(),
+  avatar_url: z.string(),
 });
 
 export const authResponseSchema = z.object({
@@ -330,18 +330,6 @@ const settingsResponseSchema = z.object({
   global_registry_auth: z.array(registryAuthEntrySchema),
 });
 
-export const adminUserSchema = z.object({
-  id: z.string(),
-  email: z.string(),
-  role: z.string(),
-  created_at: z.string(),
-});
-export type AdminUser = z.infer<typeof adminUserSchema>;
-
-const usersResponseSchema = z.object({
-  users: z.array(adminUserSchema),
-});
-
 export interface PutRegistryAuthInput {
   target: string;
   kind: "image" | "helm";
@@ -372,12 +360,6 @@ export interface CreateClusterInput {
 }
 
 export const api = {
-  login(email: string, password: string): Promise<AuthResponse> {
-    return request("/api/auth/login", authResponseSchema, {
-      method: "POST",
-      body: { email, password },
-    });
-  },
   devLogin(): Promise<AuthResponse> {
     return request("/api/auth/dev-login", authResponseSchema, { method: "POST" });
   },
@@ -476,18 +458,6 @@ export const api = {
       null,
       { method: "DELETE" },
     );
-  },
-  listUsers(): Promise<AdminUser[]> {
-    return request("/api/users", usersResponseSchema).then((r) => r.users);
-  },
-  createUser(input: { email: string; password: string; role: string }): Promise<AdminUser> {
-    return request("/api/users", adminUserSchema, { method: "POST", body: input });
-  },
-  updateUser(id: string, input: { role?: string; password?: string }): Promise<AdminUser> {
-    return request(`/api/users/${id}`, adminUserSchema, { method: "PATCH", body: input });
-  },
-  deleteUser(id: string): Promise<void> {
-    return request(`/api/users/${id}`, null, { method: "DELETE" });
   },
   updateClusterSchedule(clusterId: string, schedule_cron: string): Promise<Cluster> {
     return request(`/api/clusters/${clusterId}/schedule`, clusterSchema, {

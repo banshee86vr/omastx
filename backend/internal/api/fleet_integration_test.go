@@ -70,21 +70,7 @@ func TestFleetSummaryIntegration(t *testing.T) {
 		Connector: connector,
 	}).Router()
 
-	if _, err := queries.CreateUser(ctx, db.CreateUserParams{
-		Email: "fleet@example.com", PasswordHash: mustHash(t, "fleet-pass"), Role: "admin",
-	}); err != nil {
-		t.Fatalf("create user: %v", err)
-	}
-	authed := func(r *http.Request) {
-		login := doJSON(t, h, http.MethodPost, "/api/auth/login",
-			`{"email":"fleet@example.com","password":"fleet-pass"}`, nil)
-		var a authResponse
-		if err := json.Unmarshal(login.Body.Bytes(), &a); err != nil {
-			t.Fatal(err)
-		}
-		r.AddCookie(findSessionCookie(login))
-		r.Header.Set(csrfHeader, a.CSRFToken)
-	}
+	authed := authedRequest(t, ctx, queries)
 
 	createCluster := func(name, context string) uuid.UUID {
 		rec := doJSON(t, h, http.MethodPost, "/api/clusters",

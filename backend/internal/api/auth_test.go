@@ -1,13 +1,13 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -16,14 +16,12 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	"golang.org/x/crypto/bcrypt"
 
 	"github.com/banshee86vr/omastx/backend/internal/cluster"
 	"github.com/banshee86vr/omastx/backend/internal/store/db"
 )
 
 type fakeStore struct {
-	users    map[string]db.User          // by email
 	sessions map[string]db.GetSessionRow // by token hash
 	clusters map[uuid.UUID]db.GetClusterRow
 	// lastCreateCluster captures params for encryption assertions.
@@ -32,47 +30,19 @@ type fakeStore struct {
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{
-		users:    map[string]db.User{},
 		sessions: map[string]db.GetSessionRow{},
 		clusters: map[uuid.UUID]db.GetClusterRow{},
 	}
 }
 
-// testPassword is the password all fake users are created with.
-const testPassword = "secret"
-
-func (f *fakeStore) addUser(email string) db.User {
-	hash, _ := bcrypt.GenerateFromPassword([]byte(testPassword), bcrypt.MinCost)
-	u := db.User{
-		ID: uuid.New(), Email: email, PasswordHash: string(hash), Role: "admin",
-		CreatedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
-	}
-	f.users[email] = u
-	return u
-}
-
-func (f *fakeStore) GetUserByEmail(_ context.Context, email string) (db.User, error) {
-	u, ok := f.users[email]
-	if !ok {
-		return db.User{}, pgx.ErrNoRows
-	}
-	return u, nil
-}
-
 func (f *fakeStore) CreateSession(_ context.Context, arg db.CreateSessionParams) error {
-	u := db.User{}
-	for _, cand := range f.users {
-		if cand.ID == arg.UserID {
-			u = cand
-		}
-	}
 	f.sessions[arg.TokenHash] = db.GetSessionRow{
-		TokenHash: arg.TokenHash,
-		UserID:    arg.UserID,
-		CsrfToken: arg.CsrfToken,
-		ExpiresAt: arg.ExpiresAt,
-		Email:     u.Email,
-		Role:      u.Role,
+		TokenHash:       arg.TokenHash,
+		GithubLogin:     arg.GithubLogin,
+		GithubName:      arg.GithubName,
+		GithubAvatarUrl: arg.GithubAvatarUrl,
+		CsrfToken:       arg.CsrfToken,
+		ExpiresAt:       arg.ExpiresAt,
 	}
 	return nil
 }
@@ -155,9 +125,6 @@ func (f *fakeStore) UpdateClusterSchedule(_ context.Context, arg db.UpdateCluste
 	return nil
 }
 
-// ArtifactStore methods: the M1/M2 unit tests don't exercise scans/artifacts, so
-// these are minimal (empty results). The scan flow is covered by the integration
-// test against dockerized Postgres.
 func (f *fakeStore) GetScan(_ context.Context, _ uuid.UUID) (db.Scan, error) {
 	return db.Scan{}, pgx.ErrNoRows
 }
@@ -238,72 +205,7 @@ func (f *fakeStore) DeleteGlobalRegistryAuth(_ context.Context, _ db.DeleteGloba
 	return nil
 }
 
-func (f *fakeStore) ListUsers(_ context.Context) ([]db.ListUsersRow, error) {
-	rows := make([]db.ListUsersRow, 0, len(f.users))
-	for _, u := range f.users {
-		rows = append(rows, db.ListUsersRow{
-			ID: u.ID, Email: u.Email, Role: u.Role, CreatedAt: u.CreatedAt,
-		})
-	}
-	return rows, nil
-}
-
-func (f *fakeStore) CreateUser(_ context.Context, arg db.CreateUserParams) (db.User, error) {
-	if _, ok := f.users[arg.Email]; ok {
-		return db.User{}, pgx.ErrNoRows
-	}
-	u := db.User{
-		ID: uuid.New(), Email: arg.Email, PasswordHash: arg.PasswordHash,
-		Role: arg.Role, CreatedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
-	}
-	f.users[arg.Email] = u
-	return u, nil
-}
-
-func (f *fakeStore) UpdateUser(_ context.Context, arg db.UpdateUserParams) error {
-	for email, u := range f.users {
-		if u.ID == arg.ID {
-			u.Role = arg.Role
-			if arg.PasswordHash != "" {
-				u.PasswordHash = arg.PasswordHash
-			}
-			f.users[email] = u
-			return nil
-		}
-	}
-	return pgx.ErrNoRows
-}
-
-func (f *fakeStore) DeleteUser(_ context.Context, id uuid.UUID) (int64, error) {
-	for email, u := range f.users {
-		if u.ID == id {
-			delete(f.users, email)
-			return 1, nil
-		}
-	}
-	return 0, nil
-}
-
-func (f *fakeStore) CountUsersByRole(_ context.Context, role string) (int64, error) {
-	var n int64
-	for _, u := range f.users {
-		if u.Role == role {
-			n++
-		}
-	}
-	return n, nil
-}
-
-func (f *fakeStore) GetUserByID(_ context.Context, id uuid.UUID) (db.User, error) {
-	for _, u := range f.users {
-		if u.ID == id {
-			return u, nil
-		}
-	}
-	return db.User{}, pgx.ErrNoRows
-}
-
-var testMasterKey = bytes.Repeat([]byte{7}, 32)
+var testMasterKey = []byte("0123456789abcdef0123456789abcdef")
 
 func newTestServer(store Store) http.Handler {
 	return newTestServerWithConnector(store, &fakeConnector{result: allowAllCheckResult()})
@@ -316,12 +218,59 @@ func newTestServerWithConnector(store Store, connector cluster.Connector) http.H
 	}).Router()
 }
 
-func newDevTestServer(store Store, email string) http.Handler {
+func newGitHubTestServer(store Store, oauthBase, apiBase, org string, member bool) http.Handler {
 	return NewServer(store, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{
-		MasterKey:     testMasterKey,
-		DevMode:       true,
-		DevLoginEmail: email,
+		MasterKey:               testMasterKey,
+		GitHubClientID:          "test-client-id",
+		GitHubClientSecret:      "test-client-secret",
+		GitHubOrg:               org,
+		BaseURL:                 "http://example.com",
+		GitHubOAuthBaseOverride: oauthBase,
+		GitHubAPIBaseOverride:   apiBase,
+		Connector:               &fakeConnector{result: allowAllCheckResult()},
 	}).Router()
+}
+
+func newDevTestServer(store Store) http.Handler {
+	return NewServer(store, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{
+		MasterKey: testMasterKey,
+		DevMode:   true,
+	}).Router()
+}
+
+func startGitHubMocks(t *testing.T, org string, member bool) (oauthBase, apiBase string) {
+	t.Helper()
+	oauthSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/login/oauth/access_token":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"access_token": "test-access-token",
+				"token_type":   "bearer",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	apiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/user":
+			_ = json.NewEncoder(w).Encode(githubUser{
+				Login: "alice", Name: "Alice", AvatarURL: "https://avatars.example/alice.png",
+			})
+		case r.URL.Path == "/user/memberships/orgs/"+org:
+			if member {
+				_ = json.NewEncoder(w).Encode(githubOrgMembership{State: "active"})
+			} else {
+				w.WriteHeader(http.StatusNotFound)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(oauthSrv.Close)
+	t.Cleanup(apiSrv.Close)
+	return oauthSrv.URL, apiSrv.URL
 }
 
 func doJSON(t *testing.T, h http.Handler, method, path, body string, mod func(*http.Request)) *httptest.ResponseRecorder {
@@ -336,67 +285,108 @@ func doJSON(t *testing.T, h http.Handler, method, path, body string, mod func(*h
 	return rec
 }
 
-func TestLogin(t *testing.T) {
+func doGet(t *testing.T, h http.Handler, path string, mod func(*http.Request)) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	if mod != nil {
+		mod(req)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestGitHubLogin(t *testing.T) {
+	store := newFakeStore()
+	oauthBase, apiBase := startGitHubMocks(t, "acme", true)
+	h := newGitHubTestServer(store, oauthBase, apiBase, "acme", true)
+
+	rec := doGet(t, h, "/api/auth/github/login", nil)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302", rec.Code)
+	}
+	if !strings.Contains(rec.Header().Get("Location"), "client_id=test-client-id") {
+		t.Errorf("authorize URL = %q", rec.Header().Get("Location"))
+	}
+	if findCookie(rec, oauthStateCookie) == nil {
+		t.Fatal("oauth state cookie not set")
+	}
+}
+
+func TestGitHubLoginDevFallback(t *testing.T) {
+	store := newFakeStore()
+	h := newDevTestServer(store)
+
+	rec := doGet(t, h, "/api/auth/github/login", nil)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302 (%s)", rec.Code, rec.Body)
+	}
+	if rec.Header().Get("Location") != "/" {
+		t.Errorf("Location = %q, want /", rec.Header().Get("Location"))
+	}
+	if findSessionCookie(rec) == nil {
+		t.Fatal("session cookie not set")
+	}
+}
+
+func TestGitHubCallback(t *testing.T) {
 	tests := []struct {
 		name       string
-		body       string
+		org        string
+		member     bool
 		wantStatus int
-		wantCode   string
+		wantLoc    string
 	}{
-		{"valid credentials", `{"email":"admin@example.com","password":"secret"}`, http.StatusOK, ""},
-		{"wrong password", `{"email":"admin@example.com","password":"nope"}`, http.StatusUnauthorized, "invalid_credentials"},
-		{"unknown user", `{"email":"ghost@example.com","password":"secret"}`, http.StatusUnauthorized, "invalid_credentials"},
-		{"empty body", `{}`, http.StatusBadRequest, "invalid_request"},
-		{"malformed json", `{`, http.StatusBadRequest, "invalid_request"},
+		{"active member", "acme", true, http.StatusFound, "/"},
+		{"not a member", "acme", false, http.StatusFound, "/signin?error=not_authorized"},
+		{"solo username", "alice", false, http.StatusFound, "/"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			store := newFakeStore()
-			store.addUser("admin@example.com")
-			h := newTestServer(store)
+			oauthBase, apiBase := startGitHubMocks(t, tt.org, tt.member)
+			h := newGitHubTestServer(store, oauthBase, apiBase, tt.org, tt.member)
 
-			rec := doJSON(t, h, http.MethodPost, "/api/auth/login", tt.body, nil)
-			if rec.Code != tt.wantStatus {
-				t.Fatalf("status = %d, want %d (body %s)", rec.Code, tt.wantStatus, rec.Body)
-			}
-			if tt.wantCode != "" {
-				var p Problem
-				if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
-					t.Fatalf("problem json: %v", err)
-				}
-				if p.Code != tt.wantCode {
-					t.Errorf("problem code = %q, want %q", p.Code, tt.wantCode)
-				}
-				if p.Detail == "" {
-					t.Error("problem detail must state cause and next step, got empty")
-				}
-				return
+			login := doGet(t, h, "/api/auth/github/login", nil)
+			stateCookie := findCookie(login, oauthStateCookie)
+			if stateCookie == nil {
+				t.Fatal("missing state cookie")
 			}
 
-			var resp authResponse
-			if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-				t.Fatalf("response json: %v", err)
+			callback := doGet(t, h, "/api/auth/github/callback?code=test-code&state="+url.QueryEscape(stateCookie.Value),
+				func(req *http.Request) { req.AddCookie(stateCookie) })
+			if callback.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d (%s)", callback.Code, tt.wantStatus, callback.Body)
 			}
-			if resp.User.Email != "admin@example.com" || resp.CSRFToken == "" {
-				t.Errorf("unexpected auth response: %+v", resp)
+			loc := callback.Header().Get("Location")
+			if !strings.HasPrefix(loc, tt.wantLoc) {
+				t.Errorf("Location = %q, want prefix %q", loc, tt.wantLoc)
 			}
-			cookie := findSessionCookie(rec)
-			if cookie == nil {
-				t.Fatal("session cookie not set")
-			}
-			if !cookie.HttpOnly || cookie.SameSite != http.SameSiteLaxMode {
-				t.Errorf("cookie must be HttpOnly SameSite=Lax, got %+v", cookie)
+			if tt.member && findSessionCookie(callback) == nil {
+				t.Fatal("session cookie not set for member")
 			}
 		})
 	}
 }
 
+func TestGitHubCallbackBadState(t *testing.T) {
+	store := newFakeStore()
+	oauthBase, apiBase := startGitHubMocks(t, "acme", true)
+	h := newGitHubTestServer(store, oauthBase, apiBase, "acme", true)
+
+	rec := doGet(t, h, "/api/auth/github/callback?code=x&state=wrong", func(req *http.Request) {
+		req.AddCookie(&http.Cookie{Name: oauthStateCookie, Value: "expected"})
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
 func TestMeAndLogout(t *testing.T) {
 	store := newFakeStore()
-	store.addUser("admin@example.com")
-	h := newTestServer(store)
+	h := newDevTestServer(store)
 
-	login := doJSON(t, h, http.MethodPost, "/api/auth/login", `{"email":"admin@example.com","password":"secret"}`, nil)
+	login := doJSON(t, h, http.MethodPost, "/api/auth/dev-login", "", nil)
 	if login.Code != http.StatusOK {
 		t.Fatalf("login failed: %d %s", login.Code, login.Body)
 	}
@@ -424,7 +414,7 @@ func TestMeAndLogout(t *testing.T) {
 		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 			t.Fatal(err)
 		}
-		if resp.User.Email != "admin@example.com" || resp.CSRFToken != auth.CSRFToken {
+		if resp.User.Login != "dev" || resp.CSRFToken != auth.CSRFToken {
 			t.Errorf("unexpected me response: %+v", resp)
 		}
 	})
@@ -453,15 +443,13 @@ func TestMeAndLogout(t *testing.T) {
 
 func TestExpiredSessionRejected(t *testing.T) {
 	store := newFakeStore()
-	u := store.addUser("admin@example.com")
 	token := randomToken()
 	store.sessions[hashToken(token)] = db.GetSessionRow{
-		TokenHash: hashToken(token),
-		UserID:    u.ID,
-		CsrfToken: "csrf",
-		ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(-time.Hour), Valid: true},
-		Email:     u.Email,
-		Role:      u.Role,
+		TokenHash:   hashToken(token),
+		GithubLogin: "alice",
+		GithubName:  "Alice",
+		CsrfToken:   "csrf",
+		ExpiresAt:   pgtype.Timestamptz{Time: time.Now().Add(-time.Hour), Valid: true},
 	}
 	h := newTestServer(store)
 
@@ -476,8 +464,7 @@ func TestExpiredSessionRejected(t *testing.T) {
 func TestDevLogin(t *testing.T) {
 	t.Run("dev mode issues session without password", func(t *testing.T) {
 		store := newFakeStore()
-		store.addUser("dev@localhost")
-		h := newDevTestServer(store, "dev@localhost")
+		h := newDevTestServer(store)
 
 		rec := doJSON(t, h, http.MethodPost, "/api/auth/dev-login", "", nil)
 		if rec.Code != http.StatusOK {
@@ -490,7 +477,6 @@ func TestDevLogin(t *testing.T) {
 
 	t.Run("disabled outside dev mode", func(t *testing.T) {
 		store := newFakeStore()
-		store.addUser("dev@localhost")
 		h := newTestServer(store)
 
 		rec := doJSON(t, h, http.MethodPost, "/api/auth/dev-login", "", nil)
@@ -501,8 +487,12 @@ func TestDevLogin(t *testing.T) {
 }
 
 func findSessionCookie(rec *httptest.ResponseRecorder) *http.Cookie {
+	return findCookie(rec, sessionCookie)
+}
+
+func findCookie(rec *httptest.ResponseRecorder, name string) *http.Cookie {
 	for _, c := range rec.Result().Cookies() {
-		if c.Name == sessionCookie && c.Value != "" {
+		if c.Name == name && c.Value != "" {
 			return c
 		}
 	}

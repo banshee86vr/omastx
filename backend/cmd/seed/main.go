@@ -37,6 +37,6 @@ func run(logger *slog.Logger) error {
 	if err := seed.Apply(ctx, pool, cfg.MasterKey); err != nil {
 		return err
 	}
-	logger.Info("demo fleet ready", "hint", "sign in with OMASTX_ADMIN_EMAIL / OMASTX_ADMIN_PASSWORD")
+	logger.Info("demo fleet ready", "hint", "sign in via dev-login (OMASTX_DEV) or GitHub OAuth")
 	return nil
 }

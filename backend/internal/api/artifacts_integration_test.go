@@ -42,21 +42,7 @@ func TestArtifactHistoryIntegration(t *testing.T) {
 		MasterKey: testMasterKey,
 	}).Router()
 
-	if _, err := queries.CreateUser(ctx, db.CreateUserParams{
-		Email: "hist@example.com", PasswordHash: mustHash(t, "hist-pass"), Role: "admin",
-	}); err != nil {
-		t.Fatalf("create user: %v", err)
-	}
-	authed := func(r *http.Request) {
-		login := doJSON(t, h, http.MethodPost, "/api/auth/login",
-			`{"email":"hist@example.com","password":"hist-pass"}`, nil)
-		var a authResponse
-		if err := json.Unmarshal(login.Body.Bytes(), &a); err != nil {
-			t.Fatal(err)
-		}
-		r.AddCookie(findSessionCookie(login))
-		r.Header.Set(csrfHeader, a.CSRFToken)
-	}
+	authed := authedRequest(t, ctx, queries)
 
 	clusterID, err := queries.CreateCluster(ctx, db.CreateClusterParams{
 		Name: "hist-cluster", ApiServerUrl: "https://k8s.example",
@@ -156,21 +142,7 @@ func TestExportIntegration(t *testing.T) {
 		MasterKey: testMasterKey,
 	}).Router()
 
-	if _, err := queries.CreateUser(ctx, db.CreateUserParams{
-		Email: "export@example.com", PasswordHash: mustHash(t, "export-pass"), Role: "admin",
-	}); err != nil {
-		t.Fatalf("create user: %v", err)
-	}
-	authed := func(r *http.Request) {
-		login := doJSON(t, h, http.MethodPost, "/api/auth/login",
-			`{"email":"export@example.com","password":"export-pass"}`, nil)
-		var a authResponse
-		if err := json.Unmarshal(login.Body.Bytes(), &a); err != nil {
-			t.Fatal(err)
-		}
-		r.AddCookie(findSessionCookie(login))
-		r.Header.Set(csrfHeader, a.CSRFToken)
-	}
+	authed := authedRequest(t, ctx, queries)
 
 	clusterID, err := queries.CreateCluster(ctx, db.CreateClusterParams{
 		Name: "export-cluster", ApiServerUrl: "https://k8s.example",

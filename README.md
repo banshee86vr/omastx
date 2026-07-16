@@ -74,12 +74,19 @@ Optional `deploy/.env` overrides dev defaults (see `deploy/.env.example`).
 Images are published to GitHub Container Registry by CI:
 `ghcr.io/banshee86vr/omastx-backend` and `ghcr.io/banshee86vr/omastx-frontend`.
 
+Register a [GitHub OAuth App](https://github.com/settings/developers) with callback URL
+`${OMASTX_BASE_URL}/api/auth/github/callback` (e.g. `https://omastx.example.com/api/auth/github/callback`).
+Only members of the configured GitHub org can sign in. For a solo install, set
+`OMASTX_GITHUB_ORG` to your personal GitHub username instead of an organization slug.
+
 ```bash
 # 1. Create the secret the chart references (never templated inline)
 kubectl create secret generic omastx \
-  --from-literal=OMASTX_MASTER_KEY=$(openssl rand -hex 16) \
-  --from-literal=OMASTX_ADMIN_EMAIL=admin@example.com \
-  --from-literal=OMASTX_ADMIN_PASSWORD=change-me \
+  --from-literal=OMASTX_MASTER_KEY=$(openssl rand -hex 32) \
+  --from-literal=OMASTX_GITHUB_CLIENT_ID=... \
+  --from-literal=OMASTX_GITHUB_CLIENT_SECRET=... \
+  --from-literal=OMASTX_GITHUB_ORG=your-org \
+  --from-literal=OMASTX_BASE_URL=https://omastx.example.com \
   --from-literal=DATABASE_URL=postgres://user:pass@host:5432/omastx
 
 # 2. Install the chart (external Postgres by default)

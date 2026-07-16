@@ -81,21 +81,7 @@ func TestScanFlowIntegration(t *testing.T) {
 		Scanner:   mgr,
 	}).Router()
 
-	if _, err := queries.CreateUser(ctx, db.CreateUserParams{
-		Email: "scan@example.com", PasswordHash: mustHash(t, "scan-pass"), Role: "admin",
-	}); err != nil {
-		t.Fatalf("create user: %v", err)
-	}
-	authed := func(r *http.Request) {
-		login := doJSON(t, h, http.MethodPost, "/api/auth/login",
-			`{"email":"scan@example.com","password":"scan-pass"}`, nil)
-		var a authResponse
-		if err := json.Unmarshal(login.Body.Bytes(), &a); err != nil {
-			t.Fatal(err)
-		}
-		r.AddCookie(findSessionCookie(login))
-		r.Header.Set(csrfHeader, a.CSRFToken)
-	}
+	authed := authedRequest(t, ctx, queries)
 
 	created := doJSON(t, h, http.MethodPost, "/api/clusters",
 		kubeconfigJSON(`,"name":"scan-cluster","context":"prod-eu"`), authed)
@@ -256,21 +242,7 @@ func TestListRegistryTargetsIntegration(t *testing.T) {
 		Connector: &fakeConnector{result: allowAllCheckResult()},
 	}).Router()
 
-	if _, err := queries.CreateUser(ctx, db.CreateUserParams{
-		Email: "targets@example.com", PasswordHash: mustHash(t, "targets-pass"), Role: "admin",
-	}); err != nil {
-		t.Fatalf("create user: %v", err)
-	}
-	authed := func(r *http.Request) {
-		login := doJSON(t, h, http.MethodPost, "/api/auth/login",
-			`{"email":"targets@example.com","password":"targets-pass"}`, nil)
-		var a authResponse
-		if err := json.Unmarshal(login.Body.Bytes(), &a); err != nil {
-			t.Fatal(err)
-		}
-		r.AddCookie(findSessionCookie(login))
-		r.Header.Set(csrfHeader, a.CSRFToken)
-	}
+	authed := authedRequest(t, ctx, queries)
 
 	created := doJSON(t, h, http.MethodPost, "/api/clusters",
 		kubeconfigJSON(`,"name":"targets-cluster","context":"prod-eu"`), authed)
@@ -407,21 +379,7 @@ func TestStaleArtifactsPrunedAfterRescan(t *testing.T) {
 		Scanner:   mgr,
 	}).Router()
 
-	if _, err := queries.CreateUser(ctx, db.CreateUserParams{
-		Email: "prune@example.com", PasswordHash: mustHash(t, "prune-pass"), Role: "admin",
-	}); err != nil {
-		t.Fatalf("create user: %v", err)
-	}
-	authed := func(r *http.Request) {
-		login := doJSON(t, h, http.MethodPost, "/api/auth/login",
-			`{"email":"prune@example.com","password":"prune-pass"}`, nil)
-		var a authResponse
-		if err := json.Unmarshal(login.Body.Bytes(), &a); err != nil {
-			t.Fatal(err)
-		}
-		r.AddCookie(findSessionCookie(login))
-		r.Header.Set(csrfHeader, a.CSRFToken)
-	}
+	authed := authedRequest(t, ctx, queries)
 
 	created := doJSON(t, h, http.MethodPost, "/api/clusters",
 		kubeconfigJSON(`,"name":"prune-cluster","context":"prod-eu"`), authed)

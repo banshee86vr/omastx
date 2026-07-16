@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -39,21 +38,7 @@ func TestSettingsIntegration(t *testing.T) {
 		MasterKey: testMasterKey, SettingsLoader: loader,
 	}).Router()
 
-	if _, err := queries.CreateUser(ctx, db.CreateUserParams{
-		Email: "admin@example.com", PasswordHash: mustHash(t, "admin-pass"), Role: "admin",
-	}); err != nil {
-		t.Fatalf("create admin: %v", err)
-	}
-	authed := func(r *http.Request) {
-		login := doJSON(t, h, http.MethodPost, "/api/auth/login",
-			`{"email":"admin@example.com","password":"admin-pass"}`, nil)
-		var a authResponse
-		if err := json.Unmarshal(login.Body.Bytes(), &a); err != nil {
-			t.Fatal(err)
-		}
-		r.AddCookie(findSessionCookie(login))
-		r.Header.Set(csrfHeader, a.CSRFToken)
-	}
+	authed := authedRequest(t, ctx, queries)
 
 	get := doJSON(t, h, http.MethodGet, "/api/settings", "", authed)
 	if get.Code != http.StatusOK {
@@ -70,11 +55,5 @@ func TestSettingsIntegration(t *testing.T) {
 	}
 	if loader.OciTTL() != 8*time.Hour {
 		t.Errorf("oci ttl = %v", loader.OciTTL())
-	}
-
-	createUser := doJSON(t, h, http.MethodPost, "/api/users",
-		`{"email":"viewer@example.com","password":"viewer-pass","role":"user"}`, authed)
-	if createUser.Code != http.StatusCreated {
-		t.Fatalf("create user: %d %s", createUser.Code, createUser.Body)
 	}
 }

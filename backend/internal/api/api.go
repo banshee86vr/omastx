@@ -5,7 +5,6 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -62,7 +61,6 @@ type Store interface {
 	RegistryAuthStore
 	FleetStore
 	SettingsStore
-	UserAdminStore
 }
 
 // Scanner triggers and streams scans. *scan.Manager satisfies it.
@@ -81,8 +79,15 @@ type Options struct {
 	// MasterKey encrypts kubeconfigs at rest (32 bytes, SPEC §2.6).
 	MasterKey []byte
 	// DevMode enables passwordless POST /api/auth/dev-login (local dev only).
-	DevMode       bool
-	DevLoginEmail string
+	DevMode bool
+	// GitHub OAuth (required in production; optional when DevMode is true).
+	GitHubClientID     string
+	GitHubClientSecret string
+	GitHubOrg          string
+	BaseURL            string
+	// GitHubAPIBaseOverride / GitHubOAuthBaseOverride point OAuth at a mock server in tests.
+	GitHubAPIBaseOverride   string
+	GitHubOAuthBaseOverride string
 	// Connector performs cluster connectivity + RBAC checks.
 	Connector cluster.Connector
 	// Scanner runs scans; Scheduler re-reads schedules after cluster changes.
@@ -98,12 +103,16 @@ type Server struct {
 	secureCookies bool
 	masterKey     []byte
 	devMode       bool
-	devLoginEmail string
+	githubClientID     string
+	githubClientSecret string
+	githubOrg          string
+	baseURL            string
+	githubAPIBaseOverride   string
+	githubOAuthBaseOverride string
 	connector     cluster.Connector
 	scanner        Scanner
 	scheduler      Scheduler
 	settingsLoader *settings.Loader
-	limiter        *loginLimiter
 }
 
 func NewServer(store Store, logger *slog.Logger, opts Options) *Server {
@@ -113,12 +122,16 @@ func NewServer(store Store, logger *slog.Logger, opts Options) *Server {
 		secureCookies: opts.SecureCookies,
 		masterKey:     opts.MasterKey,
 		devMode:       opts.DevMode,
-		devLoginEmail: opts.DevLoginEmail,
+		githubClientID:     opts.GitHubClientID,
+		githubClientSecret: opts.GitHubClientSecret,
+		githubOrg:          opts.GitHubOrg,
+		baseURL:            opts.BaseURL,
+		githubAPIBaseOverride:   opts.GitHubAPIBaseOverride,
+		githubOAuthBaseOverride: opts.GitHubOAuthBaseOverride,
 		connector:     opts.Connector,
 		scanner:        opts.Scanner,
 		scheduler:      opts.Scheduler,
 		settingsLoader: opts.SettingsLoader,
-		limiter:        newLoginLimiter(5, 15*time.Minute),
 	}
 }
 
@@ -136,7 +149,8 @@ func (s *Server) Router() http.Handler {
 	})
 
 	r.Route("/api", func(r chi.Router) {
-		r.Post("/auth/login", s.handleLogin)
+		r.Get("/auth/github/login", s.handleGitHubLogin)
+		r.Get("/auth/github/callback", s.handleGitHubCallback)
 		if s.devMode {
 			r.Post("/auth/dev-login", s.handleDevLogin)
 		}
@@ -149,18 +163,11 @@ func (s *Server) Router() http.Handler {
 			r.Get("/fleet/summary", s.handleFleetSummary)
 			r.Get("/export", s.handleExport)
 
-			r.Group(func(r chi.Router) {
-				r.Use(s.requireAdmin)
-				r.Get("/settings", s.handleGetSettings)
-				r.Put("/settings", s.handlePutSettings)
-				r.Get("/settings/registry-auth", s.handleListGlobalRegistryAuth)
-				r.Put("/settings/registry-auth", s.handlePutGlobalRegistryAuth)
-				r.Delete("/settings/registry-auth/{target}", s.handleDeleteGlobalRegistryAuth)
-				r.Get("/users", s.handleListUsers)
-				r.Post("/users", s.handleCreateUser)
-				r.Patch("/users/{id}", s.handleUpdateUser)
-				r.Delete("/users/{id}", s.handleDeleteUser)
-			})
+			r.Get("/settings", s.handleGetSettings)
+			r.Put("/settings", s.handlePutSettings)
+			r.Get("/settings/registry-auth", s.handleListGlobalRegistryAuth)
+			r.Put("/settings/registry-auth", s.handlePutGlobalRegistryAuth)
+			r.Delete("/settings/registry-auth/{target}", s.handleDeleteGlobalRegistryAuth)
 
 			r.Route("/clusters", func(r chi.Router) {
 				r.Get("/", s.handleListClusters)

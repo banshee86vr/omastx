@@ -38,21 +38,7 @@ func TestUpdateClusterScheduleIntegration(t *testing.T) {
 		MasterKey: testMasterKey,
 	}).Router()
 
-	if _, err := queries.CreateUser(ctx, db.CreateUserParams{
-		Email: "sched@example.com", PasswordHash: mustHash(t, "sched-pass"), Role: "admin",
-	}); err != nil {
-		t.Fatalf("create user: %v", err)
-	}
-	authed := func(r *http.Request) {
-		login := doJSON(t, h, http.MethodPost, "/api/auth/login",
-			`{"email":"sched@example.com","password":"sched-pass"}`, nil)
-		var a authResponse
-		if err := json.Unmarshal(login.Body.Bytes(), &a); err != nil {
-			t.Fatal(err)
-		}
-		r.AddCookie(findSessionCookie(login))
-		r.Header.Set(csrfHeader, a.CSRFToken)
-	}
+	authed := authedRequest(t, ctx, queries)
 
 	clusterID, err := queries.CreateCluster(ctx, db.CreateClusterParams{
 		Name: "sched-cluster", ApiServerUrl: "https://k8s.example",

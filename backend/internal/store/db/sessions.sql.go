@@ -8,26 +8,29 @@ package db
 import (
 	"context"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createSession = `-- name: CreateSession :exec
-INSERT INTO sessions (token_hash, user_id, csrf_token, expires_at)
-VALUES ($1, $2, $3, $4)
+INSERT INTO sessions (token_hash, github_login, github_name, github_avatar_url, csrf_token, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6)
 `
 
 type CreateSessionParams struct {
-	TokenHash string             `json:"token_hash"`
-	UserID    uuid.UUID          `json:"user_id"`
-	CsrfToken string             `json:"csrf_token"`
-	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	TokenHash       string             `json:"token_hash"`
+	GithubLogin     string             `json:"github_login"`
+	GithubName      string             `json:"github_name"`
+	GithubAvatarUrl string             `json:"github_avatar_url"`
+	CsrfToken       string             `json:"csrf_token"`
+	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
 }
 
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) error {
 	_, err := q.db.Exec(ctx, createSession,
 		arg.TokenHash,
-		arg.UserID,
+		arg.GithubLogin,
+		arg.GithubName,
+		arg.GithubAvatarUrl,
 		arg.CsrfToken,
 		arg.ExpiresAt,
 	)
@@ -53,20 +56,18 @@ func (q *Queries) DeleteSession(ctx context.Context, tokenHash string) error {
 }
 
 const getSession = `-- name: GetSession :one
-SELECT s.token_hash, s.user_id, s.csrf_token, s.expires_at,
-       u.email, u.role
-FROM sessions s
-JOIN users u ON u.id = s.user_id
-WHERE s.token_hash = $1 AND s.expires_at > now()
+SELECT token_hash, github_login, github_name, github_avatar_url, csrf_token, expires_at
+FROM sessions
+WHERE token_hash = $1 AND expires_at > now()
 `
 
 type GetSessionRow struct {
-	TokenHash string             `json:"token_hash"`
-	UserID    uuid.UUID          `json:"user_id"`
-	CsrfToken string             `json:"csrf_token"`
-	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
-	Email     string             `json:"email"`
-	Role      string             `json:"role"`
+	TokenHash       string             `json:"token_hash"`
+	GithubLogin     string             `json:"github_login"`
+	GithubName      string             `json:"github_name"`
+	GithubAvatarUrl string             `json:"github_avatar_url"`
+	CsrfToken       string             `json:"csrf_token"`
+	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
 }
 
 func (q *Queries) GetSession(ctx context.Context, tokenHash string) (GetSessionRow, error) {
@@ -74,11 +75,11 @@ func (q *Queries) GetSession(ctx context.Context, tokenHash string) (GetSessionR
 	var i GetSessionRow
 	err := row.Scan(
 		&i.TokenHash,
-		&i.UserID,
+		&i.GithubLogin,
+		&i.GithubName,
+		&i.GithubAvatarUrl,
 		&i.CsrfToken,
 		&i.ExpiresAt,
-		&i.Email,
-		&i.Role,
 	)
 	return i, err
 }

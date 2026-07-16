@@ -1,9 +1,9 @@
 /**
  * Accessibility + performance checks against a running Omastx stack (SPEC §7).
- * Prerequisites: seeded DB, backend on :8484, frontend on :5173 (or BASE_URL).
+ * Prerequisites: seeded DB, backend on :8484 (OMASTX_DEV=true), frontend on :5173 (or BASE_URL).
  *
  * Usage:
- *   BASE_URL=http://localhost:5173 ADMIN_EMAIL=admin@localhost ADMIN_PASSWORD=secret node scripts/a11y-perf.mjs
+ *   BASE_URL=http://localhost:5173 node scripts/a11y-perf.mjs
  */
 import { chromium } from "playwright";
 import AxeBuilder from "@axe-core/playwright";
@@ -12,8 +12,6 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const base = process.env.BASE_URL ?? "http://localhost:5173";
-const email = process.env.ADMIN_EMAIL ?? "admin@localhost";
-const password = process.env.ADMIN_PASSWORD ?? "changeme";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const tokensPath = join(__dirname, "../src/styles/tokens.css");
@@ -68,9 +66,11 @@ async function signIn(page) {
   if (!page.url().includes("/signin")) {
     return;
   }
-  await page.getByLabel(/email/i).fill(email);
-  await page.getByLabel(/password/i).fill(password);
-  await page.getByRole("button", { name: /sign in/i }).click();
+  const res = await page.request.post(`${base}/api/auth/dev-login`);
+  if (!res.ok()) {
+    throw new Error(`dev-login failed: ${res.status()} ${await res.text()}`);
+  }
+  await page.goto(`${base}/`);
   await page.waitForURL((url) => !url.pathname.includes("/signin"));
 }
 

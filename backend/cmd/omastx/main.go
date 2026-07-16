@@ -4,16 +4,12 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
-
-	"golang.org/x/crypto/bcrypt"
 
 	"github.com/banshee86vr/omastx/backend/internal/api"
 	"github.com/banshee86vr/omastx/backend/internal/cluster"
@@ -61,10 +57,6 @@ func run(logger *slog.Logger, migrateOnly bool) error {
 	defer pool.Close()
 	queries := db.New(pool)
 
-	if err := bootstrapAdmin(ctx, queries, cfg, logger); err != nil {
-		return err
-	}
-
 	settingsLoader := settings.NewLoader(queries)
 	if err := settingsLoader.Refresh(ctx); err != nil {
 		logger.Warn("load app settings failed; using defaults", "error", err)
@@ -94,14 +86,17 @@ func run(logger *slog.Logger, migrateOnly bool) error {
 		logger.Warn("OMASTX_DEV is enabled — using dev defaults and passwordless sign-in; never set this in production")
 	}
 	apiServer := api.NewServer(queries, logger, api.Options{
-		SecureCookies:  cfg.SecureCookies,
-		MasterKey:      cfg.MasterKey,
-		DevMode:        cfg.DevMode,
-		DevLoginEmail:  cfg.AdminEmail,
-		Connector:      &cluster.KubeConnector{},
-		Scanner:        scanner,
-		Scheduler:      scheduler,
-		SettingsLoader: settingsLoader,
+		SecureCookies:      cfg.SecureCookies,
+		MasterKey:          cfg.MasterKey,
+		DevMode:            cfg.DevMode,
+		GitHubClientID:     cfg.GitHubClientID,
+		GitHubClientSecret: cfg.GitHubClientSecret,
+		GitHubOrg:          cfg.GitHubOrg,
+		BaseURL:            cfg.BaseURL,
+		Connector:          &cluster.KubeConnector{},
+		Scanner:            scanner,
+		Scheduler:          scheduler,
+		SettingsLoader:     settingsLoader,
 	})
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,
@@ -126,32 +121,4 @@ func run(logger *slog.Logger, migrateOnly bool) error {
 		defer cancel()
 		return srv.Shutdown(shutdownCtx)
 	}
-}
-
-// bootstrapAdmin creates the initial admin user from env on first run (idempotent).
-func bootstrapAdmin(ctx context.Context, queries *db.Queries, cfg config.Config, logger *slog.Logger) error {
-	count, err := queries.CountUsers(ctx)
-	if err != nil {
-		return fmt.Errorf("count users: %w", err)
-	}
-	if count > 0 {
-		return nil
-	}
-	if cfg.AdminEmail == "" || cfg.AdminPassword == "" {
-		return fmt.Errorf("no users exist and OMASTX_ADMIN_EMAIL / OMASTX_ADMIN_PASSWORD are not set; set both so the first admin can be created")
-	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(cfg.AdminPassword), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
-	_, err = queries.CreateUser(ctx, db.CreateUserParams{
-		Email:        strings.ToLower(strings.TrimSpace(cfg.AdminEmail)),
-		PasswordHash: string(hash),
-		Role:         "admin",
-	})
-	if err != nil {
-		return fmt.Errorf("create admin user: %w", err)
-	}
-	logger.Info("admin user created", "email", cfg.AdminEmail)
-	return nil
 }
