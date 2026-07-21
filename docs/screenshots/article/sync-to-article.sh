@@ -20,6 +20,7 @@ map_src_to_dest() {
     07-connect-cluster.png) echo connect ;;
     08-artifact-detail.png) echo artifact_detail ;;
     09-cluster-prod-us-degraded.png) echo cluster_degraded ;;
+    10-architecture.png) echo architecture ;;
     *) echo "" ;;
   esac
 }
@@ -31,7 +32,8 @@ for src in \
   05-artifacts-filtered.png \
   07-connect-cluster.png \
   08-artifact-detail.png \
-  09-cluster-prod-us-degraded.png
+  09-cluster-prod-us-degraded.png \
+  10-architecture.png
 do
   base="$(map_src_to_dest "$src")"
   [[ -n "$base" ]] || continue
@@ -46,7 +48,14 @@ do
   else
     avifenc --min 0 --max 28 "$png" "$DEST/${base}.avif" >/dev/null
   fi
-  echo "synced $base.{png,webp,avif}"
+  # Architecture also ships as jpg (README + article fallbacks).
+  if [[ "$base" == "architecture" ]]; then
+    magick "$png" -quality 90 "$DEST/${base}.jpg"
+    magick "$png" -quality 90 "$SRC/10-architecture.jpg"
+    echo "synced $base.{png,webp,avif,jpg}"
+  else
+    echo "synced $base.{png,webp,avif}"
+  fi
 done
 
 echo "Article assets updated in $DEST"

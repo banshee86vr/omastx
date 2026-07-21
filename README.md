@@ -5,7 +5,7 @@ is *running* in your Kubernetes clusters against what is *latest* upstream, and 
 gap as a navigable chart. Read-only by design: connect clusters with read-only
 kubeconfigs; Omastx never mutates anything.
 
-![Omastx architecture: React frontend, Go backend, PostgreSQL, read-only Kubernetes clusters, and upstream sources](docs/screenshots/article/10-architecture.jpg)
+![Omastx architecture: React SPA and MCP/Bearer clients, Go API, PostgreSQL, read-only Kubernetes clusters, and upstream sources](docs/screenshots/article/10-architecture.jpg)
 
 ## Local quickstart (docker compose)
 

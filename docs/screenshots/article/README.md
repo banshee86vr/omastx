@@ -30,7 +30,8 @@ Filenames written into this folder:
 | `07-connect-cluster.png` | Connect cluster onboarding (kubeconfig drop zone) |
 | `08-artifact-detail.png` | Artifact detail sheet - ingress-nginx major drift |
 | `09-cluster-prod-us-degraded.png` | prod-us degraded - images-only + unknown drift |
-| `10-architecture.jpg` | Architecture diagram (frontend, Go API, Postgres, K8s, upstream) |
+| `10-architecture.jpg` | Architecture diagram (SPA, MCP/Bearer clients, Go API, Postgres, K8s, upstream) |
+| `10-architecture.png` | Same diagram, PNG source for webp/avif derivatives |
 
 **Demo clusters** (seeded by `seed-fleet.sql`):
 
