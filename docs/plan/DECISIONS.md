@@ -252,3 +252,12 @@ run only when every CI job (backend, frontend, a11y, helm, docker) succeeds. CI 
 runs standalone on pull requests. Main/tag pushes go through Release → CI → publish.
 Extends D5.
 
+## D21: Numeric runAsUser in chart securityContext (2026-07-21)
+
+Kind deploy of the Helm chart failed backend pods with `CreateContainerConfigError`:
+`runAsNonRoot: true` plus the distroless image's named `USER nonroot` — kubelet cannot
+verify non-root without a numeric UID. Set explicit `runAsUser`/`runAsGroup` on both
+workloads: backend `65532` (distroless nonroot), frontend `101` (nginx-unprivileged).
+Verified with a local kind install (`postgres.internal.enabled=true`, images loaded via
+`kind load`).
+
