@@ -5,15 +5,16 @@ VALUES
   ('11111111-1111-1111-1111-111111111111', 'prod-eu', 'https://prod-eu.example.com:6443', 'prod-eu',
    decode('00','hex'), decode('00','hex'),
    '{"images_ok":true,"helm_ok":true,"checked_at":"2026-07-13T09:00:00Z","permissions":[]}'::jsonb,
-   '0 */6 * * *', 'connected', now() - interval '20 minutes'),
+   -- Yearly cron avoids scheduler catch-up scans against dummy kubeconfigs.
+   '0 0 1 1 *', 'connected', now() - interval '20 minutes'),
   ('22222222-2222-2222-2222-222222222222', 'prod-us', 'https://prod-us.example.com:6443', 'prod-us',
    decode('00','hex'), decode('00','hex'),
    '{"images_ok":true,"helm_ok":false,"checked_at":"2026-07-13T09:00:00Z","permissions":[]}'::jsonb,
-   '0 */6 * * *', 'degraded', now() - interval '2 hours'),
+   '0 0 1 1 *', 'degraded', now() - interval '2 hours'),
   ('33333333-3333-3333-3333-333333333333', 'staging', 'https://staging.example.com:6443', 'staging',
    decode('00','hex'), decode('00','hex'),
    '{"images_ok":true,"helm_ok":true,"checked_at":"2026-07-13T09:00:00Z","permissions":[]}'::jsonb,
-   '0 */6 * * *', 'error', now() - interval '1 hour');
+   '0 0 1 1 *', 'error', now() - interval '1 hour');
 
 INSERT INTO scans (id, cluster_id, started_at, finished_at, status, stats)
 VALUES ('a1111111-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111',

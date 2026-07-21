@@ -47,7 +47,7 @@ ORDER BY COALESCE(o.drift_score, -1) DESC, a.identity ASC, a.id ASC
 OFFSET sqlc.arg('off')
 LIMIT sqlc.arg('lim');
 
--- ListArtifactsForExport returns all matching artifacts (no pagination) for CSV/JSON export.
+-- ListArtifactsForExport returns all matching artifacts (no pagination) for CSV/PDF export.
 -- name: ListArtifactsForExport :many
 SELECT a.id, a.cluster_id, c.name AS cluster_name, a.kind, a.namespace,
        a.owner_kind, a.owner_name, a.identity, a.installed_version, a.last_seen,

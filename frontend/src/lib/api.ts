@@ -427,7 +427,7 @@ export const api = {
       (r) => r.history,
     );
   },
-  exportArtifactsUrl(filters: ArtifactFilters, format: "csv" | "json"): string {
+  exportArtifactsUrl(filters: ArtifactFilters, format: "csv" | "pdf"): string {
     const params = new URLSearchParams({ format });
     if (filters.cluster) params.set("cluster", filters.cluster);
     if (filters.kind) params.set("kind", filters.kind);

@@ -4,13 +4,20 @@ HD captures of the local compose stack seeded with realistic
 multi-cluster drift data. Desktop shots use a **1920×1080** viewport at 2×
 device scale (~3840×2160 PNGs). Mobile shot uses **390×844** at 2×.
 
-Regenerate the stack + seed with:
+Regenerate the stack, seed, and PNGs with:
 
 ```bash
 ./docs/screenshots/article/capture.sh
 ```
 
-Then capture PNGs into this folder (see filenames below).
+Copy into the consulting article (`png` / `webp` / `avif`) with:
+
+```bash
+./docs/screenshots/article/sync-to-article.sh
+# or: ARTICLE_DEST=/path/to/public/blog/omastx ./docs/screenshots/article/sync-to-article.sh
+```
+
+Filenames written into this folder:
 
 | File | View |
 |------|------|
@@ -23,6 +30,7 @@ Then capture PNGs into this folder (see filenames below).
 | `07-connect-cluster.png` | Connect cluster onboarding (kubeconfig drop zone) |
 | `08-artifact-detail.png` | Artifact detail sheet - ingress-nginx major drift |
 | `09-cluster-prod-us-degraded.png` | prod-us degraded - images-only + unknown drift |
+| `10-architecture.jpg` | Architecture diagram (frontend, Go API, Postgres, K8s, upstream) |
 
 **Demo clusters** (seeded by `seed-fleet.sql`):
 

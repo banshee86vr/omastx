@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -117,7 +118,7 @@ func TestArtifactHistoryIntegration(t *testing.T) {
 	}
 }
 
-// TestExportIntegration verifies GET /api/export returns CSV/JSON with the same
+// TestExportIntegration verifies GET /api/export returns CSV/PDF with the same
 // filters as the artifact ledger and guards against CSV formula injection (SPEC §2.7).
 func TestExportIntegration(t *testing.T) {
 	if testing.Short() {
@@ -187,16 +188,24 @@ func TestExportIntegration(t *testing.T) {
 		t.Error("csv missing drift class")
 	}
 
-	jsonResp := doJSON(t, h, http.MethodGet,
-		"/api/export?format=json&cluster="+clusterID.ID.String(), "", authed)
-	if jsonResp.Code != http.StatusOK {
-		t.Fatalf("json export: %d %s", jsonResp.Code, jsonResp.Body)
+	pdfResp := doJSON(t, h, http.MethodGet,
+		"/api/export?format=pdf&cluster="+clusterID.ID.String()+"&class=major", "", authed)
+	if pdfResp.Code != http.StatusOK {
+		t.Fatalf("pdf export: %d %s", pdfResp.Code, pdfResp.Body)
 	}
-	var items []artifactDTO
-	if err := json.Unmarshal(jsonResp.Body.Bytes(), &items); err != nil {
-		t.Fatal(err)
+	if ct := pdfResp.Header().Get("Content-Type"); ct != "application/pdf" {
+		t.Errorf("pdf content-type: %q", ct)
 	}
-	if len(items) != 1 || items[0].DriftClass != "major" {
-		t.Errorf("json export items: %+v", items)
+	pdfBody := pdfResp.Body.Bytes()
+	if len(pdfBody) < 5 || string(pdfBody[:5]) != "%PDF-" {
+		t.Fatalf("pdf magic missing: %q", string(pdfBody[:min(32, len(pdfBody))]))
+	}
+	if !bytes.Contains(pdfBody, []byte("%%EOF")) {
+		t.Error("pdf missing end-of-file marker")
+	}
+
+	bad := doJSON(t, h, http.MethodGet, "/api/export?format=json", "", authed)
+	if bad.Code != http.StatusBadRequest {
+		t.Fatalf("json export should be rejected: %d", bad.Code)
 	}
 }

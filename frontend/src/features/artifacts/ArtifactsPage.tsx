@@ -119,10 +119,10 @@ export function ArtifactsPage() {
           <Button
             variant="quiet"
             onClick={() => {
-              window.location.href = api.exportArtifactsUrl(filters, "json");
+              window.location.href = api.exportArtifactsUrl(filters, "pdf");
             }}
           >
-            Export JSON
+            Export PDF
           </Button>
         </div>
       </header>

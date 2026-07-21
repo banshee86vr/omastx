@@ -1,8 +1,8 @@
 package api
 
 import (
+	"bytes"
 	"encoding/csv"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
@@ -147,9 +147,9 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	if format == "" {
 		format = "csv"
 	}
-	if format != "csv" && format != "json" {
+	if format != "csv" && format != "pdf" {
 		writeProblem(w, http.StatusBadRequest, "invalid_format", "Invalid export format",
-			"Format must be csv or json. Pick one and try again.")
+			"Format must be csv or pdf. Pick one and try again.")
 		return
 	}
 
@@ -192,12 +192,16 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	filename := fmt.Sprintf("omastx-artifacts-%s.%s", stamp, format)
 
 	switch format {
-	case "json":
-		w.Header().Set("Content-Type", "application/json")
+	case "pdf":
+		var buf bytes.Buffer
+		if err := writeArtifactsPDF(&buf, items, time.Now().UTC()); err != nil {
+			s.internalError(w, err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/pdf")
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
-		enc := json.NewEncoder(w)
-		enc.SetIndent("", "  ")
-		if err := enc.Encode(items); err != nil {
+		w.Header().Set("Content-Length", strconv.Itoa(buf.Len()))
+		if _, err := w.Write(buf.Bytes()); err != nil {
 			s.internalError(w, err)
 		}
 	default:

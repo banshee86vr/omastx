@@ -318,7 +318,7 @@ type ListArtifactsForExportRow struct {
 	Confidence       pgtype.Float4      `json:"confidence"`
 }
 
-// ListArtifactsForExport returns all matching artifacts (no pagination) for CSV/JSON export.
+// ListArtifactsForExport returns all matching artifacts (no pagination) for CSV/PDF export.
 func (q *Queries) ListArtifactsForExport(ctx context.Context, arg ListArtifactsForExportParams) ([]ListArtifactsForExportRow, error) {
 	rows, err := q.db.Query(ctx, listArtifactsForExport,
 		arg.Cluster,
