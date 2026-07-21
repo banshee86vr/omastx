@@ -330,6 +330,36 @@ const settingsResponseSchema = z.object({
   global_registry_auth: z.array(registryAuthEntrySchema),
 });
 
+export const apiTokenSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  prefix: z.string(),
+  scopes: z.array(z.enum(["read", "scan"])),
+  created_by: z.string(),
+  created_at: z.string(),
+  last_used_at: z.string().nullable(),
+  expires_at: z.string().nullable(),
+});
+export type APIToken = z.infer<typeof apiTokenSchema>;
+
+const apiTokensResponseSchema = z.object({
+  tokens: z.array(apiTokenSchema),
+});
+
+const createAPITokenResponseSchema = z.object({
+  token: z.string(),
+  token_meta: apiTokenSchema,
+});
+export type CreateAPITokenResponse = z.infer<typeof createAPITokenResponseSchema>;
+
+export type APITokenScope = "read" | "scan";
+
+export interface CreateAPITokenInput {
+  name: string;
+  scopes: APITokenScope[];
+  expires_in_days?: number;
+}
+
 export interface PutRegistryAuthInput {
   target: string;
   kind: "image" | "helm";
@@ -458,6 +488,18 @@ export const api = {
       null,
       { method: "DELETE" },
     );
+  },
+  listAPITokens(): Promise<APIToken[]> {
+    return request("/api/settings/api-tokens", apiTokensResponseSchema).then((r) => r.tokens);
+  },
+  createAPIToken(input: CreateAPITokenInput): Promise<CreateAPITokenResponse> {
+    return request("/api/settings/api-tokens", createAPITokenResponseSchema, {
+      method: "POST",
+      body: input,
+    });
+  },
+  revokeAPIToken(id: string): Promise<void> {
+    return request(`/api/settings/api-tokens/${id}`, null, { method: "DELETE" });
   },
   updateClusterSchedule(clusterId: string, schedule_cron: string): Promise<Cluster> {
     return request(`/api/clusters/${clusterId}/schedule`, clusterSchema, {

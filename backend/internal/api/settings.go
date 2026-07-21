@@ -54,6 +54,16 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, err)
 		return
 	}
+	settings := settingsDTO{
+		OciTTLHours:         intervalToHours(row.OciTtl),
+		HelmrepoTTLHours:    intervalToHours(row.HelmrepoTtl),
+		ArtifacthubTTLHours: intervalToHours(row.ArtifacthubTtl),
+	}
+	// API tokens may read TTLs only; registry credential metadata stays session-only.
+	if principalFrom(r.Context()).Kind == authKindToken {
+		writeJSON(w, http.StatusOK, map[string]any{"settings": settings})
+		return
+	}
 	global, err := s.store.ListGlobalRegistryAuth(r.Context())
 	if err != nil {
 		s.internalError(w, err)
@@ -69,11 +79,7 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"settings": settingsDTO{
-			OciTTLHours:         intervalToHours(row.OciTtl),
-			HelmrepoTTLHours:    intervalToHours(row.HelmrepoTtl),
-			ArtifacthubTTLHours: intervalToHours(row.ArtifacthubTtl),
-		},
+		"settings":             settings,
 		"global_registry_auth": creds,
 	})
 }

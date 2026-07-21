@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"golang.org/x/oauth2"
@@ -40,9 +41,37 @@ type AuthStore interface {
 	DeleteSession(ctx context.Context, tokenHash string) error
 }
 
+// APITokenStore persists machine API tokens.
+type APITokenStore interface {
+	CreateAPIToken(ctx context.Context, arg db.CreateAPITokenParams) (db.CreateAPITokenRow, error)
+	GetAPITokenByHash(ctx context.Context, tokenHash string) (db.ApiToken, error)
+	ListAPITokens(ctx context.Context) ([]db.ListAPITokensRow, error)
+	RevokeAPIToken(ctx context.Context, id uuid.UUID) (int64, error)
+	TouchAPITokenLastUsed(ctx context.Context, id uuid.UUID) error
+}
+
 type ctxKey int
 
-const sessionKey ctxKey = 0
+const principalKey ctxKey = 0
+
+type authKind string
+
+const (
+	authKindSession authKind = "session"
+	authKindToken   authKind = "token"
+)
+
+const (
+	scopeRead = "read"
+	scopeScan = "scan"
+)
+
+type principal struct {
+	Kind    authKind
+	Scopes  []string
+	Session db.GetSessionRow
+	TokenID uuid.UUID
+}
 
 type userDTO struct {
 	Login     string `json:"login"`
@@ -355,9 +384,34 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// requireAuth resolves the session cookie and stores the session in the context.
+// requireAuth resolves a Bearer API token or session cookie into a principal.
 func (s *Server) requireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if auth := r.Header.Get("Authorization"); auth != "" {
+			scheme, raw, ok := strings.Cut(auth, " ")
+			raw = strings.TrimSpace(raw)
+			if !ok || !strings.EqualFold(scheme, "Bearer") || raw == "" || !strings.HasPrefix(raw, "omx_") {
+				writeProblem(w, http.StatusUnauthorized, "unauthenticated", "Sign in required",
+					"The API token is missing or invalid. Create a token in Settings and send it as Authorization: Bearer.")
+				return
+			}
+			tok, err := s.store.GetAPITokenByHash(r.Context(), hashToken(raw))
+			if err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					writeProblem(w, http.StatusUnauthorized, "unauthenticated", "Sign in required",
+						"The API token is missing, revoked, or expired. Create a new token in Settings.")
+					return
+				}
+				s.internalError(w, err)
+				return
+			}
+			// Best-effort last-used stamp; never fail the request on touch errors.
+			_ = s.store.TouchAPITokenLastUsed(r.Context(), tok.ID)
+			p := principal{Kind: authKindToken, Scopes: tok.Scopes, TokenID: tok.ID}
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey, p)))
+			return
+		}
+
 		cookie, err := r.Cookie(sessionCookie)
 		if err != nil || cookie.Value == "" {
 			writeProblem(w, http.StatusUnauthorized, "unauthenticated", "Sign in required",
@@ -374,11 +428,13 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 			s.internalError(w, err)
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), sessionKey, sess)))
+		p := principal{Kind: authKindSession, Session: sess}
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey, p)))
 	})
 }
 
-// requireCSRF enforces the double-submit token on mutating methods (SPEC §2.6).
+// requireCSRF enforces the double-submit token on mutating methods for cookie sessions.
+// Bearer API tokens skip CSRF (no cookie attack surface).
 func (s *Server) requireCSRF(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -386,9 +442,13 @@ func (s *Server) requireCSRF(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		sess := sessionFrom(r.Context())
+		p := principalFrom(r.Context())
+		if p.Kind == authKindToken {
+			next.ServeHTTP(w, r)
+			return
+		}
 		got := r.Header.Get(csrfHeader)
-		if got == "" || subtle.ConstantTimeCompare([]byte(got), []byte(sess.CsrfToken)) != 1 {
+		if got == "" || subtle.ConstantTimeCompare([]byte(got), []byte(p.Session.CsrfToken)) != 1 {
 			writeProblem(w, http.StatusForbidden, "csrf_mismatch", "Request blocked",
 				"The CSRF token is missing or invalid. Reload the page and try again.")
 			return
@@ -397,7 +457,53 @@ func (s *Server) requireCSRF(next http.Handler) http.Handler {
 	})
 }
 
+// requireSession rejects API-token principals (browser/session-only routes).
+func (s *Server) requireSession(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if principalFrom(r.Context()).Kind != authKindSession {
+			writeProblem(w, http.StatusForbidden, "insufficient_scope", "Session required",
+				"This endpoint is only available when signed in with a browser session. Use the UI or a session cookie.")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// requireScopes ensures a token has every listed scope. Sessions always pass.
+func (s *Server) requireScopes(scopes ...string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			p := principalFrom(r.Context())
+			if p.Kind == authKindSession {
+				next.ServeHTTP(w, r)
+				return
+			}
+			for _, want := range scopes {
+				if !p.hasScope(want) {
+					writeProblem(w, http.StatusForbidden, "insufficient_scope", "Missing scope",
+						fmt.Sprintf("This API token lacks the %q scope. Create a token with that scope in Settings.", want))
+					return
+				}
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func principalFrom(ctx context.Context) principal {
+	p, _ := ctx.Value(principalKey).(principal)
+	return p
+}
+
+func (p principal) hasScope(scope string) bool {
+	for _, s := range p.Scopes {
+		if s == scope {
+			return true
+		}
+	}
+	return false
+}
+
 func sessionFrom(ctx context.Context) db.GetSessionRow {
-	sess, _ := ctx.Value(sessionKey).(db.GetSessionRow)
-	return sess
+	return principalFrom(ctx).Session
 }

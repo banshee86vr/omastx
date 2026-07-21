@@ -22,16 +22,18 @@ import (
 )
 
 type fakeStore struct {
-	sessions map[string]db.GetSessionRow // by token hash
-	clusters map[uuid.UUID]db.GetClusterRow
+	sessions  map[string]db.GetSessionRow // by token hash
+	apiTokens map[string]db.ApiToken      // by token hash
+	clusters  map[uuid.UUID]db.GetClusterRow
 	// lastCreateCluster captures params for encryption assertions.
 	lastCreateCluster *db.CreateClusterParams
 }
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{
-		sessions: map[string]db.GetSessionRow{},
-		clusters: map[uuid.UUID]db.GetClusterRow{},
+		sessions:  map[string]db.GetSessionRow{},
+		apiTokens: map[string]db.ApiToken{},
+		clusters:  map[uuid.UUID]db.GetClusterRow{},
 	}
 }
 
@@ -50,6 +52,86 @@ func (f *fakeStore) GetSession(_ context.Context, tokenHash string) (db.GetSessi
 
 func (f *fakeStore) DeleteSession(_ context.Context, tokenHash string) error {
 	delete(f.sessions, tokenHash)
+	return nil
+}
+
+func (f *fakeStore) CreateAPIToken(_ context.Context, arg db.CreateAPITokenParams) (db.CreateAPITokenRow, error) {
+	id := uuid.New()
+	tok := db.ApiToken{
+		ID:          id,
+		Name:        arg.Name,
+		TokenHash:   arg.TokenHash,
+		TokenPrefix: arg.TokenPrefix,
+		Scopes:      arg.Scopes,
+		CreatedBy:   arg.CreatedBy,
+		CreatedAt:   pgtype.Timestamptz{Time: time.Now(), Valid: true},
+		ExpiresAt:   arg.ExpiresAt,
+	}
+	f.apiTokens[arg.TokenHash] = tok
+	return db.CreateAPITokenRow{
+		ID:          tok.ID,
+		Name:        tok.Name,
+		TokenPrefix: tok.TokenPrefix,
+		Scopes:      tok.Scopes,
+		CreatedBy:   tok.CreatedBy,
+		CreatedAt:   tok.CreatedAt,
+		LastUsedAt:  tok.LastUsedAt,
+		ExpiresAt:   tok.ExpiresAt,
+		RevokedAt:   tok.RevokedAt,
+	}, nil
+}
+
+func (f *fakeStore) GetAPITokenByHash(_ context.Context, tokenHash string) (db.ApiToken, error) {
+	tok, ok := f.apiTokens[tokenHash]
+	if !ok || tok.RevokedAt.Valid {
+		return db.ApiToken{}, pgx.ErrNoRows
+	}
+	if tok.ExpiresAt.Valid && tok.ExpiresAt.Time.Before(time.Now()) {
+		return db.ApiToken{}, pgx.ErrNoRows
+	}
+	return tok, nil
+}
+
+func (f *fakeStore) ListAPITokens(_ context.Context) ([]db.ListAPITokensRow, error) {
+	rows := make([]db.ListAPITokensRow, 0, len(f.apiTokens))
+	for _, tok := range f.apiTokens {
+		if tok.RevokedAt.Valid {
+			continue
+		}
+		rows = append(rows, db.ListAPITokensRow{
+			ID:          tok.ID,
+			Name:        tok.Name,
+			TokenPrefix: tok.TokenPrefix,
+			Scopes:      tok.Scopes,
+			CreatedBy:   tok.CreatedBy,
+			CreatedAt:   tok.CreatedAt,
+			LastUsedAt:  tok.LastUsedAt,
+			ExpiresAt:   tok.ExpiresAt,
+			RevokedAt:   tok.RevokedAt,
+		})
+	}
+	return rows, nil
+}
+
+func (f *fakeStore) RevokeAPIToken(_ context.Context, id uuid.UUID) (int64, error) {
+	for hash, tok := range f.apiTokens {
+		if tok.ID == id && !tok.RevokedAt.Valid {
+			tok.RevokedAt = pgtype.Timestamptz{Time: time.Now(), Valid: true}
+			f.apiTokens[hash] = tok
+			return 1, nil
+		}
+	}
+	return 0, nil
+}
+
+func (f *fakeStore) TouchAPITokenLastUsed(_ context.Context, id uuid.UUID) error {
+	for hash, tok := range f.apiTokens {
+		if tok.ID == id {
+			tok.LastUsedAt = pgtype.Timestamptz{Time: time.Now(), Valid: true}
+			f.apiTokens[hash] = tok
+			return nil
+		}
+	}
 	return nil
 }
 

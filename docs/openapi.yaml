@@ -1,0 +1,549 @@
+openapi: 3.1.0
+info:
+  title: Omastx Machine API
+  version: "1.0"
+  description: |
+    Stable contract for scripts, CI, and AI agents. Authenticate with
+    `Authorization: Bearer omx_…` using a token created in Settings.
+
+    Scopes:
+    - `read` — fleet, clusters, artifacts, scans, export, settings TTLs
+    - `scan` — start a cluster scan
+
+    Token management endpoints require a browser session (cookie + CSRF).
+    Admin routes (cluster create/delete, registry credentials, kubeconfigs)
+    are session-only and are not part of this machine surface.
+servers:
+  - url: /api
+security:
+  - bearerAuth: []
+tags:
+  - name: Fleet
+  - name: Clusters
+  - name: Scans
+  - name: Artifacts
+  - name: Export
+  - name: Settings
+  - name: Tokens
+paths:
+  /openapi.yaml:
+    get:
+      summary: OpenAPI document (YAML)
+      security: []
+      responses:
+        "200":
+          description: OpenAPI 3.1 YAML
+          content:
+            application/yaml:
+              schema:
+                type: string
+  /openapi.json:
+    get:
+      summary: OpenAPI document (JSON)
+      security: []
+      responses:
+        "200":
+          description: OpenAPI 3.1 JSON
+  /fleet/summary:
+    get:
+      tags: [Fleet]
+      summary: Fleet drift rollup
+      responses:
+        "200":
+          description: Fleet summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FleetSummary"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+  /clusters:
+    get:
+      tags: [Clusters]
+      summary: List clusters
+      responses:
+        "200":
+          description: Cluster list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [clusters]
+                properties:
+                  clusters:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Cluster"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+  /clusters/{id}:
+    get:
+      tags: [Clusters]
+      summary: Get cluster
+      parameters:
+        - $ref: "#/components/parameters/ClusterId"
+      responses:
+        "200":
+          description: Cluster
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cluster"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+  /clusters/{id}/artifact-kinds:
+    get:
+      tags: [Clusters]
+      summary: Artifact kind counts for latest scan
+      parameters:
+        - $ref: "#/components/parameters/ClusterId"
+      responses:
+        "200":
+          description: Kind counts
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+  /clusters/{id}/registry-targets:
+    get:
+      tags: [Clusters]
+      summary: Registry targets needing auth (no secrets)
+      parameters:
+        - $ref: "#/components/parameters/ClusterId"
+      responses:
+        "200":
+          description: Targets
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+  /clusters/{id}/scan:
+    post:
+      tags: [Scans]
+      summary: Start a scan
+      description: Requires the `scan` scope. CSRF is not required for Bearer tokens.
+      parameters:
+        - $ref: "#/components/parameters/ClusterId"
+      responses:
+        "202":
+          description: Scan accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [scan_id]
+                properties:
+                  scan_id:
+                    type: string
+                    format: uuid
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+  /clusters/{id}/scans:
+    get:
+      tags: [Scans]
+      summary: List recent scans (last 20)
+      parameters:
+        - $ref: "#/components/parameters/ClusterId"
+      responses:
+        "200":
+          description: Scans
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [scans]
+                properties:
+                  scans:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Scan"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+  /clusters/{id}/scans/{sid}/events:
+    get:
+      tags: [Scans]
+      summary: Scan progress (SSE)
+      parameters:
+        - $ref: "#/components/parameters/ClusterId"
+        - name: sid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: text/event-stream of scan progress events
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+  /artifacts:
+    get:
+      tags: [Artifacts]
+      summary: List artifacts
+      parameters:
+        - name: cluster
+          in: query
+          schema: { type: string, format: uuid }
+        - name: kind
+          in: query
+          schema: { type: string }
+        - name: namespace
+          in: query
+          schema: { type: string }
+        - name: class
+          in: query
+          schema:
+            $ref: "#/components/schemas/DriftClass"
+        - name: resolve_status
+          in: query
+          schema: { type: string }
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: cursor
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Page of artifacts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArtifactsPage"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+  /artifacts/{id}:
+    get:
+      tags: [Artifacts]
+      summary: Artifact detail
+      parameters:
+        - $ref: "#/components/parameters/ArtifactId"
+      responses:
+        "200":
+          description: Artifact detail
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+  /artifacts/{id}/history:
+    get:
+      tags: [Artifacts]
+      summary: Artifact drift history
+      parameters:
+        - $ref: "#/components/parameters/ArtifactId"
+      responses:
+        "200":
+          description: History points
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+  /export:
+    get:
+      tags: [Export]
+      summary: Export artifacts as CSV or PDF
+      parameters:
+        - name: format
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [csv, pdf]
+        - name: cluster
+          in: query
+          schema: { type: string, format: uuid }
+        - name: kind
+          in: query
+          schema: { type: string }
+        - name: namespace
+          in: query
+          schema: { type: string }
+        - name: class
+          in: query
+          schema:
+            $ref: "#/components/schemas/DriftClass"
+        - name: resolve_status
+          in: query
+          schema: { type: string }
+        - name: q
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: File download
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+  /settings:
+    get:
+      tags: [Settings]
+      summary: Resolver cache TTLs
+      description: With a Bearer token, only `settings` (TTLs) is returned.
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [settings]
+                properties:
+                  settings:
+                    $ref: "#/components/schemas/AppSettings"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+  /settings/api-tokens:
+    get:
+      tags: [Tokens]
+      summary: List API tokens
+      description: Session + CSRF required. Not available with Bearer tokens.
+      security: []
+      responses:
+        "200":
+          description: Active tokens (prefixes only)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tokens]
+                properties:
+                  tokens:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/APIToken"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+    post:
+      tags: [Tokens]
+      summary: Create API token
+      description: |
+        Session + CSRF required. Returns the plaintext token once in `token`.
+        Store it immediately; it cannot be retrieved again.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, scopes]
+              properties:
+                name:
+                  type: string
+                  maxLength: 128
+                scopes:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                    enum: [read, scan]
+                expires_in_days:
+                  type: integer
+                  minimum: 1
+                  maximum: 3650
+      responses:
+        "201":
+          description: Token created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, token_meta]
+                properties:
+                  token:
+                    type: string
+                    description: Plaintext Bearer secret (shown once)
+                  token_meta:
+                    $ref: "#/components/schemas/APIToken"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+  /settings/api-tokens/{id}:
+    delete:
+      tags: [Tokens]
+      summary: Revoke API token
+      description: Session + CSRF required.
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Revoked
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: omx_
+      description: API token from Settings (`omx_…`)
+  parameters:
+    ClusterId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ArtifactId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    Problem:
+      description: RFC 7807-style problem JSON
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+  schemas:
+    Problem:
+      type: object
+      required: [code, title, detail]
+      properties:
+        code: { type: string }
+        title: { type: string }
+        detail: { type: string }
+    DriftClass:
+      type: string
+      enum: [current, patch, minor, major, deprecated, unknown]
+    AppSettings:
+      type: object
+      required: [oci_ttl_hours, helmrepo_ttl_hours, artifacthub_ttl_hours]
+      properties:
+        oci_ttl_hours: { type: integer }
+        helmrepo_ttl_hours: { type: integer }
+        artifacthub_ttl_hours: { type: integer }
+    APIToken:
+      type: object
+      required: [id, name, prefix, scopes, created_by, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        prefix: { type: string }
+        scopes:
+          type: array
+          items:
+            type: string
+            enum: [read, scan]
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+        last_used_at:
+          type: [string, "null"]
+          format: date-time
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+    Cluster:
+      type: object
+      required: [id, name, server, status, schedule_cron, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        server: { type: string }
+        status: { type: string }
+        schedule_cron: { type: string }
+        created_at: { type: string, format: date-time }
+        last_scan_at:
+          type: [string, "null"]
+          format: date-time
+    Scan:
+      type: object
+      required: [id, cluster_id, started_at, status]
+      properties:
+        id: { type: string, format: uuid }
+        cluster_id: { type: string, format: uuid }
+        started_at: { type: string, format: date-time }
+        finished_at:
+          type: [string, "null"]
+          format: date-time
+        status: { type: string }
+        error:
+          type: [string, "null"]
+    FleetClassCounts:
+      type: object
+      properties:
+        current: { type: integer }
+        patch: { type: integer }
+        minor: { type: integer }
+        major: { type: integer }
+        deprecated: { type: integer }
+        unknown: { type: integer }
+    FleetSummary:
+      type: object
+      required: [total, current, pct_current, classes, clusters, recent_scans, failures]
+      properties:
+        total: { type: integer }
+        current: { type: integer }
+        pct_current: { type: number }
+        classes:
+          $ref: "#/components/schemas/FleetClassCounts"
+        clusters:
+          type: array
+          items:
+            type: object
+        recent_scans:
+          type: array
+          items:
+            type: object
+        failures:
+          type: array
+          items:
+            type: object
+    ArtifactsPage:
+      type: object
+      required: [artifacts]
+      properties:
+        artifacts:
+          type: array
+          items:
+            type: object
+        next_cursor:
+          type: [integer, "null"]

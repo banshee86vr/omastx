@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
   type AppSettings,
+  type APITokenScope,
   type PutRegistryAuthInput,
 } from "../../lib/api.ts";
 import { Button, Field, useToast } from "../../ui/index.ts";
@@ -10,6 +11,7 @@ import { type Theme, getStoredTheme, toggleTheme } from "../../lib/theme.ts";
 import styles from "./SettingsPage.module.css";
 
 const settingsQueryKey = ["settings"];
+const tokensQueryKey = ["api-tokens"];
 
 export function SettingsPage() {
   const queryClient = useQueryClient();
@@ -18,6 +20,10 @@ export function SettingsPage() {
     queryKey: settingsQueryKey,
     queryFn: () => api.getSettings(),
   });
+  const { data: tokens = [] } = useQuery({
+    queryKey: tokensQueryKey,
+    queryFn: () => api.listAPITokens(),
+  });
 
   const [theme, setTheme] = useState<Theme>(() => getStoredTheme());
   const [ttl, setTtl] = useState<AppSettings | null>(null);
@@ -25,6 +31,9 @@ export function SettingsPage() {
   const [credTarget, setCredTarget] = useState("");
   const [credUser, setCredUser] = useState("");
   const [credPass, setCredPass] = useState("");
+  const [tokenName, setTokenName] = useState("");
+  const [tokenScopes, setTokenScopes] = useState<APITokenScope[]>(["read", "scan"]);
+  const [createdToken, setCreatedToken] = useState<string | null>(null);
 
   const settings = ttl ?? data?.settings;
 
@@ -67,15 +76,65 @@ export function SettingsPage() {
     });
   }
 
+  const createToken = useMutation({
+    mutationFn: () =>
+      api.createAPIToken({
+        name: tokenName.trim(),
+        scopes: tokenScopes,
+      }),
+    onSuccess: async (resp) => {
+      await queryClient.invalidateQueries({ queryKey: tokensQueryKey });
+      setCreatedToken(resp.token);
+      setTokenName("");
+      toast("API token created", "Copy it now — it will not be shown again.");
+    },
+    onError: (err) =>
+      toastError("Couldn't create token", err instanceof Error ? err.message : "Try again."),
+  });
+
+  const revokeToken = useMutation({
+    mutationFn: (id: string) => api.revokeAPIToken(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tokensQueryKey });
+      toast("Token revoked", "Scripts using that token will stop working immediately.");
+    },
+    onError: (err) =>
+      toastError("Couldn't revoke token", err instanceof Error ? err.message : "Try again."),
+  });
+
   function onThemeToggle() {
     setTheme(toggleTheme(theme));
+  }
+
+  function onTokenSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!tokenName.trim() || tokenScopes.length === 0) return;
+    void createToken.mutateAsync();
+  }
+
+  function toggleScope(scope: APITokenScope) {
+    setTokenScopes((prev) =>
+      prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope],
+    );
+  }
+
+  async function copyCreatedToken() {
+    if (!createdToken) return;
+    try {
+      await navigator.clipboard.writeText(createdToken);
+      toast("Copied", "Token copied to the clipboard.");
+    } catch {
+      toastError("Couldn't copy", "Select the token and copy it manually.");
+    }
   }
 
   return (
     <div className={styles.page}>
       <header>
         <h1 className={styles.headline}>Settings</h1>
-        <p className={styles.subline}>Theme, resolver cache TTLs, and global registry credentials.</p>
+        <p className={styles.subline}>
+          Theme, resolver cache TTLs, global registry credentials, and machine API tokens.
+        </p>
       </header>
 
       {isLoading && <p className={styles.muted}>Loading settings…</p>}
@@ -166,6 +225,81 @@ export function SettingsPage() {
           />
           <Button type="submit" variant="primary" disabled={saveCred.isPending}>
             Save global credentials
+          </Button>
+        </form>
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>API tokens</h2>
+        <p className={styles.muted}>
+          Bearer tokens for scripts and AI agents. Scopes: <code>read</code> (fleet, artifacts,
+          scans) and <code>scan</code> (start scans). Admin actions stay session-only.
+        </p>
+        {createdToken && (
+          <div className={styles.tokenReveal} role="status">
+            <p className={styles.muted}>Copy this token now — it will not be shown again.</p>
+            <code className={styles.tokenValue}>{createdToken}</code>
+            <div className={styles.tokenActions}>
+              <Button type="button" variant="primary" onClick={() => void copyCreatedToken()}>
+                Copy token
+              </Button>
+              <Button type="button" variant="quiet" onClick={() => setCreatedToken(null)}>
+                Dismiss
+              </Button>
+            </div>
+          </div>
+        )}
+        <ul className={styles.credList}>
+          {tokens.map((tok) => (
+            <li key={tok.id} className={styles.userRow}>
+              <span>
+                <strong>{tok.name}</strong> · <code>{tok.prefix}…</code> · {tok.scopes.join(", ")}
+              </span>
+              <Button
+                type="button"
+                variant="danger"
+                onClick={() => void revokeToken.mutateAsync(tok.id)}
+                disabled={revokeToken.isPending}
+              >
+                Revoke
+              </Button>
+            </li>
+          ))}
+          {tokens.length === 0 && <li className={styles.muted}>No active tokens yet.</li>}
+        </ul>
+        <form className={styles.form} onSubmit={onTokenSubmit}>
+          <Field
+            label="Token name"
+            value={tokenName}
+            onChange={(e) => setTokenName(e.target.value)}
+            required
+            maxLength={128}
+          />
+          <fieldset className={styles.scopeSet}>
+            <legend>Scopes</legend>
+            <label className={styles.scopeLabel}>
+              <input
+                type="checkbox"
+                checked={tokenScopes.includes("read")}
+                onChange={() => toggleScope("read")}
+              />
+              read
+            </label>
+            <label className={styles.scopeLabel}>
+              <input
+                type="checkbox"
+                checked={tokenScopes.includes("scan")}
+                onChange={() => toggleScope("scan")}
+              />
+              scan
+            </label>
+          </fieldset>
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={createToken.isPending || tokenScopes.length === 0}
+          >
+            Create token
           </Button>
         </form>
       </section>

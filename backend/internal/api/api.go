@@ -56,6 +56,7 @@ type RegistryAuthStore interface {
 // Store is everything the API needs from the database; *db.Queries satisfies it.
 type Store interface {
 	AuthStore
+	APITokenStore
 	ClusterStore
 	ArtifactStore
 	RegistryAuthStore
@@ -149,6 +150,9 @@ func (s *Server) Router() http.Handler {
 	})
 
 	r.Route("/api", func(r chi.Router) {
+		r.Get("/openapi.yaml", s.handleOpenAPIYAML)
+		r.Get("/openapi.json", s.handleOpenAPIJSON)
+
 		r.Get("/auth/github/login", s.handleGitHubLogin)
 		r.Get("/auth/github/callback", s.handleGitHubCallback)
 		if s.devMode {
@@ -157,41 +161,45 @@ func (s *Server) Router() http.Handler {
 
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireAuth, s.requireCSRF)
-			r.Get("/auth/me", s.handleMe)
-			r.Post("/auth/logout", s.handleLogout)
 
-			r.Get("/fleet/summary", s.handleFleetSummary)
-			r.Get("/export", s.handleExport)
+			r.With(s.requireSession).Get("/auth/me", s.handleMe)
+			r.With(s.requireSession).Post("/auth/logout", s.handleLogout)
 
-			r.Get("/settings", s.handleGetSettings)
-			r.Put("/settings", s.handlePutSettings)
-			r.Get("/settings/registry-auth", s.handleListGlobalRegistryAuth)
-			r.Put("/settings/registry-auth", s.handlePutGlobalRegistryAuth)
-			r.Delete("/settings/registry-auth/{target}", s.handleDeleteGlobalRegistryAuth)
+			r.With(s.requireScopes(scopeRead)).Get("/fleet/summary", s.handleFleetSummary)
+			r.With(s.requireScopes(scopeRead)).Get("/export", s.handleExport)
+
+			r.With(s.requireScopes(scopeRead)).Get("/settings", s.handleGetSettings)
+			r.With(s.requireSession).Put("/settings", s.handlePutSettings)
+			r.With(s.requireSession).Get("/settings/registry-auth", s.handleListGlobalRegistryAuth)
+			r.With(s.requireSession).Put("/settings/registry-auth", s.handlePutGlobalRegistryAuth)
+			r.With(s.requireSession).Delete("/settings/registry-auth/{target}", s.handleDeleteGlobalRegistryAuth)
+			r.With(s.requireSession).Get("/settings/api-tokens", s.handleListAPITokens)
+			r.With(s.requireSession).Post("/settings/api-tokens", s.handleCreateAPIToken)
+			r.With(s.requireSession).Delete("/settings/api-tokens/{id}", s.handleRevokeAPIToken)
 
 			r.Route("/clusters", func(r chi.Router) {
-				r.Get("/", s.handleListClusters)
-				r.Post("/", s.handleCreateCluster)
-				r.Post("/inspect", s.handleInspectKubeconfig)
-				r.Post("/check", s.handleCheckCluster)
-				r.Get("/{id}", s.handleGetCluster)
-				r.Put("/{id}/schedule", s.handleUpdateClusterSchedule)
-				r.Get("/{id}/artifact-kinds", s.handleArtifactKindCounts)
-				r.Delete("/{id}", s.handleDeleteCluster)
-				r.Post("/{id}/scan", s.handleStartScan)
-				r.Get("/{id}/scans", s.handleListScans)
-				r.Get("/{id}/scans/{sid}/events", s.handleScanEvents)
-				r.Get("/{id}/registry-auth", s.handleListRegistryAuth)
-				r.Get("/{id}/registry-targets", s.handleListRegistryTargets)
-				r.Get("/{id}/cluster-secrets", s.handleListPullSecrets)
-				r.Put("/{id}/registry-auth", s.handlePutRegistryAuth)
-				r.Delete("/{id}/registry-auth/{target}", s.handleDeleteRegistryAuth)
+				r.With(s.requireScopes(scopeRead)).Get("/", s.handleListClusters)
+				r.With(s.requireSession).Post("/", s.handleCreateCluster)
+				r.With(s.requireSession).Post("/inspect", s.handleInspectKubeconfig)
+				r.With(s.requireSession).Post("/check", s.handleCheckCluster)
+				r.With(s.requireScopes(scopeRead)).Get("/{id}", s.handleGetCluster)
+				r.With(s.requireSession).Put("/{id}/schedule", s.handleUpdateClusterSchedule)
+				r.With(s.requireScopes(scopeRead)).Get("/{id}/artifact-kinds", s.handleArtifactKindCounts)
+				r.With(s.requireSession).Delete("/{id}", s.handleDeleteCluster)
+				r.With(s.requireScopes(scopeScan)).Post("/{id}/scan", s.handleStartScan)
+				r.With(s.requireScopes(scopeRead)).Get("/{id}/scans", s.handleListScans)
+				r.With(s.requireScopes(scopeRead)).Get("/{id}/scans/{sid}/events", s.handleScanEvents)
+				r.With(s.requireSession).Get("/{id}/registry-auth", s.handleListRegistryAuth)
+				r.With(s.requireScopes(scopeRead)).Get("/{id}/registry-targets", s.handleListRegistryTargets)
+				r.With(s.requireSession).Get("/{id}/cluster-secrets", s.handleListPullSecrets)
+				r.With(s.requireSession).Put("/{id}/registry-auth", s.handlePutRegistryAuth)
+				r.With(s.requireSession).Delete("/{id}/registry-auth/{target}", s.handleDeleteRegistryAuth)
 			})
 
 			r.Route("/artifacts", func(r chi.Router) {
-				r.Get("/", s.handleListArtifacts)
-				r.Get("/{id}/history", s.handleGetArtifactHistory)
-				r.Get("/{id}", s.handleGetArtifact)
+				r.With(s.requireScopes(scopeRead)).Get("/", s.handleListArtifacts)
+				r.With(s.requireScopes(scopeRead)).Get("/{id}/history", s.handleGetArtifactHistory)
+				r.With(s.requireScopes(scopeRead)).Get("/{id}", s.handleGetArtifact)
 			})
 		})
 

@@ -97,13 +97,68 @@ helm install omastx deploy/chart/omastx \
   --set existingSecret=omastx --set postgres.internal.enabled=true
 ```
 
+## Machine access (scripts, CI, AI agents)
+
+Create a token in **Settings → API tokens** with scopes `read` and/or `scan`. The
+plaintext value (`omx_…`) is shown once. Send it as a Bearer token; CSRF is not
+required for Bearer auth. Admin actions (clusters, registry credentials) stay
+session-only.
+
+OpenAPI contract (also served live):
+
+- [`docs/openapi.yaml`](docs/openapi.yaml)
+- `GET /api/openapi.yaml` and `GET /api/openapi.json` (unauthenticated)
+
+```bash
+# Fleet summary
+curl -sS -H "Authorization: Bearer $OMASTX_API_TOKEN" \
+  "$OMASTX_URL/api/fleet/summary" | jq .
+
+# Start a scan (needs scan scope)
+curl -sS -X POST -H "Authorization: Bearer $OMASTX_API_TOKEN" \
+  "$OMASTX_URL/api/clusters/$CLUSTER_ID/scan"
+
+# Follow progress via SSE (or poll GET .../scans)
+curl -sSN -H "Authorization: Bearer $OMASTX_API_TOKEN" \
+  "$OMASTX_URL/api/clusters/$CLUSTER_ID/scans/$SCAN_ID/events"
+```
+
+### MCP server (Cursor / Claude)
+
+Thin MCP wrapper in [`mcp/`](mcp/) — same Bearer token, no duplicated business logic:
+
+```bash
+cd mcp && npm install && npm run build
+```
+
+Cursor `mcp.json` example:
+
+```json
+{
+  "mcpServers": {
+    "omastx": {
+      "command": "node",
+      "args": ["/absolute/path/to/omastx/mcp/dist/index.js"],
+      "env": {
+        "OMASTX_URL": "http://localhost:8080",
+        "OMASTX_API_TOKEN": "omx_…"
+      }
+    }
+  }
+}
+```
+
+Tools: `fleet_summary`, `list_clusters`, `get_cluster`, `list_artifacts`,
+`get_artifact`, `artifact_history`, `start_scan`, `list_scans`, `export_artifacts`.
+
 ## Repository layout
 
 ```
 backend/    Go service: API + scanner + resolvers
 frontend/   React 18 + TypeScript + Vite SPA
+mcp/        Thin MCP server over the machine API
 deploy/     docker-compose, Dockerfiles, Helm chart
-docs/       spec support docs, screenshots
+docs/       OpenAPI, screenshots
 ```
 
 ## Make targets
