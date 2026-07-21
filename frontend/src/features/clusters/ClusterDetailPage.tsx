@@ -49,7 +49,12 @@ export function ClusterDetailPage() {
   const queryClient = useQueryClient();
   const { toast, toastError } = useToast();
   const { data: cluster, isLoading, error } = useQuery(clusterQuery(clusterId));
-  const { data: scans } = useQuery(scansQuery(clusterId));
+  const { data: scans } = useQuery({
+    ...scansQuery(clusterId),
+    // Catch-up/scheduled scans start without a local scanId; poll until they finish.
+    refetchInterval: (q) =>
+      q.state.data?.some((s) => s.status === "running") ? 2000 : false,
+  });
   const latestStats = scans ? latestScanStats(scans) : null;
   const showCharts = latestStats !== null || (scans && scans.some((s) => s.status === "done"));
   const needsKindFallback =
@@ -74,11 +79,17 @@ export function ClusterDetailPage() {
   const { data: chartArtifacts } = useQuery(clusterChartArtifactsQuery(clusterId));
   const driftLanes = lanesFromArtifacts(chartArtifacts ?? []);
 
-  const progress = useScanStream(clusterId, scanId, (event) => {
+  // Prefer the scan we just started; otherwise attach to a running scan (e.g. scheduler
+  // catch-up right after connect) so status/SSE update without a full page refresh.
+  const runningScanId = scans?.find((s) => s.status === "running")?.id ?? null;
+  const streamScanId = scanId ?? runningScanId;
+
+  const progress = useScanStream(clusterId, streamScanId, (event) => {
     void queryClient.invalidateQueries({ queryKey: clusterQuery(clusterId).queryKey });
     void queryClient.invalidateQueries({ queryKey: scansQuery(clusterId).queryKey });
     void queryClient.invalidateQueries({ queryKey: artifactKindCountsQuery(clusterId).queryKey });
     void queryClient.invalidateQueries({ queryKey: ["artifacts"] });
+    void queryClient.invalidateQueries({ queryKey: ["fleet"] });
     void queryClient.invalidateQueries({ queryKey: clustersQuery.queryKey });
     void queryClient.invalidateQueries({ queryKey: clusterChartArtifactsQuery(clusterId).queryKey });
     if (event.phase === "done") {
@@ -94,7 +105,7 @@ export function ClusterDetailPage() {
   const sweepNonce = progress ? `${progress.phase}:${progress.done}:${progress.total}` : 0;
   const scanModalOpen =
     starting ||
-    (scanId !== null &&
+    (streamScanId !== null &&
       (!progress || (progress.phase !== "done" && progress.phase !== "error")));
   const scanning = scanModalOpen;
 
@@ -103,6 +114,7 @@ export function ClusterDetailPage() {
     try {
       const { scan_id } = await api.startScan(clusterId);
       setScanId(scan_id);
+      await queryClient.invalidateQueries({ queryKey: scansQuery(clusterId).queryKey });
     } catch (err) {
       toastError(
         "Couldn't start the scan",
@@ -207,7 +219,7 @@ export function ClusterDetailPage() {
               search: { cluster: clusterId, namespace, class: cls },
             })
           }
-          sweepingLaneKey={scanId ? "*" : null}
+          sweepingLaneKey={streamScanId ? "*" : null}
           sweepNonce={sweepNonce}
           emptyMessage="Run a scan to chart drift for this cluster's namespaces."
         />

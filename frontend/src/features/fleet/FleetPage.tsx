@@ -36,7 +36,12 @@ function scanTone(status: string): "current" | "caution" | "alarm" | "fathom" {
 export function FleetPage() {
   const navigate = useNavigate();
   const { data: clusters, isLoading: clustersLoading } = useQuery(clustersQuery);
-  const { data: summary } = useQuery(fleetSummaryQuery);
+  const { data: summary } = useQuery({
+    ...fleetSummaryQuery,
+    // New clusters trigger a catch-up scan; keep the rail live until it finishes.
+    refetchInterval: (q) =>
+      q.state.data?.recent_scans.some((s) => s.status === "running") ? 2000 : false,
+  });
 
   if (clustersLoading) {
     return (

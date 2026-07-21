@@ -31,6 +31,7 @@ export function useScanStream(
   useEffect(() => {
     if (!scanId) return;
     const source = new EventSource(scanEventsUrl(clusterId, scanId));
+    let finished = false;
     const handle = (e: MessageEvent) => {
       let parsed: ScanEvent;
       try {
@@ -39,12 +40,16 @@ export function useScanStream(
         return;
       }
       setEvent(parsed);
-      if (parsed.phase === "done" || parsed.phase === "error") {
+      if (!finished && (parsed.phase === "done" || parsed.phase === "error")) {
+        finished = true;
         source.close();
         onDoneRef.current?.(parsed);
       }
     };
+    // Named phase events are the primary path; also listen for plain `message`
+    // in case a proxy strips the SSE event field.
     for (const phase of PHASES) source.addEventListener(phase, handle);
+    source.addEventListener("message", handle);
     return () => source.close();
   }, [clusterId, scanId]);
 

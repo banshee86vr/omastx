@@ -90,22 +90,35 @@ func (h *Hub) Publish(id uuid.UUID, e Event) {
 	st := h.get(id)
 	st.mu.Lock()
 	st.events = append(st.events, e)
+	subs := make([]chan Event, 0, len(st.subs))
 	for ch := range st.subs {
-		select {
-		case ch <- e:
-		default: // slow consumer: it will still get the terminal close + history on reconnect
-		}
+		subs = append(subs, ch)
 	}
-	if e.Terminal() {
+	terminal := e.Terminal()
+	if terminal {
 		st.done = true
-		for ch := range st.subs {
-			close(ch)
-			delete(st.subs, ch)
-		}
+		st.subs = map[chan Event]struct{}{}
 	}
 	st.mu.Unlock()
 
-	if e.Terminal() {
+	for _, ch := range subs {
+		if terminal {
+			// Never drop the terminal event: SSE clients need it to stop waiting.
+			select {
+			case ch <- e:
+			case <-time.After(2 * time.Second):
+				// Subscriber wedged; close below so the HTTP handler can exit.
+			}
+			close(ch)
+			continue
+		}
+		select {
+		case ch <- e:
+		default: // slow consumer: history + reconnect still deliver later events
+		}
+	}
+
+	if terminal {
 		time.AfterFunc(5*time.Minute, func() {
 			h.mu.Lock()
 			delete(h.streams, id)

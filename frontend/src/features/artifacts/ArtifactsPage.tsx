@@ -43,6 +43,8 @@ export function ArtifactsPage() {
   const { data: scans } = useQuery({
     ...scansQuery(clusterId),
     enabled: Boolean(scanContextId && clusterId),
+    refetchInterval: (q) =>
+      q.state.data?.some((s) => s.status === "running") ? 2000 : false,
   });
   const openScan = scanContextId ? scans?.find((s) => s.id === scanContextId) : undefined;
   const clusterName = clusters?.find((c) => c.id === clusterId)?.name;
