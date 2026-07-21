@@ -218,7 +218,7 @@ func (s *Server) fetchGitHubUser(ctx context.Context, token *oauth2.Token) (gith
 	if err != nil {
 		return githubUser{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		return githubUser{}, fmt.Errorf("GET /user: %s (%s)", resp.Status, strings.TrimSpace(string(body)))
@@ -256,7 +256,7 @@ func (s *Server) checkGitHubOrgMembership(ctx context.Context, token *oauth2.Tok
 	if err != nil {
 		return false, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	switch resp.StatusCode {
 	case http.StatusOK:
 		var m githubOrgMembership
@@ -320,11 +320,7 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request, user gith
 
 func writeAuthJSON(w http.ResponseWriter, user githubUser, csrf string) {
 	writeJSON(w, http.StatusOK, authResponse{
-		User: userDTO{
-			Login:     user.Login,
-			Name:      user.Name,
-			AvatarURL: user.AvatarURL,
-		},
+		User:      userDTO(user),
 		CSRFToken: csrf,
 	})
 }

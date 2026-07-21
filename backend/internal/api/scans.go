@@ -127,12 +127,12 @@ func (s *Server) handleScanEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no") // disable proxy buffering (nginx)
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, "retry: 3000\n\n")
+	_, _ = fmt.Fprint(w, "retry: 3000\n\n")
 	flusher.Flush()
 
 	send := func(e scan.Event) {
 		data, _ := json.Marshal(e)
-		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", e.Phase, data)
+		_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", e.Phase, data)
 		flusher.Flush()
 	}
 
@@ -165,7 +165,7 @@ func (s *Server) handleScanEvents(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-heartbeat.C:
-			fmt.Fprint(w, ": keep-alive\n\n")
+			_, _ = fmt.Fprint(w, ": keep-alive\n\n")
 			flusher.Flush()
 		case e, open := <-events:
 			if !open {

@@ -36,8 +36,8 @@ func (m *memCache) PutTags(_ context.Context, _, _, _ string, tags []string, _ t
 	return nil
 }
 
-func imageArtifact(identity, installed string) core.Artifact {
-	return core.Artifact{Kind: "image", Identity: identity, Installed: installed}
+func imageArtifact(installed string) core.Artifact {
+	return core.Artifact{Kind: "image", Identity: "docker.io/library/nginx", Installed: installed}
 }
 
 func TestCanResolve(t *testing.T) {
@@ -46,8 +46,8 @@ func TestCanResolve(t *testing.T) {
 		a    core.Artifact
 		want bool
 	}{
-		{imageArtifact("docker.io/library/nginx", "1.25"), true},
-		{imageArtifact("docker.io/library/nginx", "sha256:deadbeef"), false},
+		{imageArtifact("1.25"), true},
+		{imageArtifact("sha256:deadbeef"), false},
 		{core.Artifact{Kind: "helm", Identity: "ingress-nginx"}, false},
 		{core.Artifact{Kind: "image", Identity: ""}, false},
 	}
@@ -63,7 +63,7 @@ func TestResolveSelectsInChannel(t *testing.T) {
 	cache := &memCache{}
 	r := New(cache, WithLister(lister), WithRate(1000, 100))
 
-	got, err := r.Resolve(context.Background(), imageArtifact("docker.io/library/nginx", "1.25.0"))
+	got, err := r.Resolve(context.Background(), imageArtifact("1.25.0"))
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestResolveUsesFreshCache(t *testing.T) {
 	cache := &memCache{tags: []string{"1.0.0", "1.1.0"}, fresh: true}
 	r := New(cache, WithLister(lister), WithRate(1000, 100))
 
-	got, err := r.Resolve(context.Background(), imageArtifact("docker.io/library/nginx", "1.0.0"))
+	got, err := r.Resolve(context.Background(), imageArtifact("1.0.0"))
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}

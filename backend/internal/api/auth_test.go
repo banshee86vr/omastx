@@ -36,14 +36,7 @@ func newFakeStore() *fakeStore {
 }
 
 func (f *fakeStore) CreateSession(_ context.Context, arg db.CreateSessionParams) error {
-	f.sessions[arg.TokenHash] = db.GetSessionRow{
-		TokenHash:       arg.TokenHash,
-		GithubLogin:     arg.GithubLogin,
-		GithubName:      arg.GithubName,
-		GithubAvatarUrl: arg.GithubAvatarUrl,
-		CsrfToken:       arg.CsrfToken,
-		ExpiresAt:       arg.ExpiresAt,
-	}
+	f.sessions[arg.TokenHash] = db.GetSessionRow(arg)
 	return nil
 }
 
@@ -218,7 +211,7 @@ func newTestServerWithConnector(store Store, connector cluster.Connector) http.H
 	}).Router()
 }
 
-func newGitHubTestServer(store Store, oauthBase, apiBase, org string, member bool) http.Handler {
+func newGitHubTestServer(store Store, oauthBase, apiBase, org string) http.Handler {
 	return NewServer(store, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{
 		MasterKey:               testMasterKey,
 		GitHubClientID:          "test-client-id",
@@ -253,12 +246,12 @@ func startGitHubMocks(t *testing.T, org string, member bool) (oauthBase, apiBase
 		}
 	}))
 	apiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/user":
+		switch r.URL.Path {
+		case "/user":
 			_ = json.NewEncoder(w).Encode(githubUser{
 				Login: "alice", Name: "Alice", AvatarURL: "https://avatars.example/alice.png",
 			})
-		case r.URL.Path == "/user/memberships/orgs/"+org:
+		case "/user/memberships/orgs/" + org:
 			if member {
 				_ = json.NewEncoder(w).Encode(githubOrgMembership{State: "active"})
 			} else {
@@ -299,7 +292,7 @@ func doGet(t *testing.T, h http.Handler, path string, mod func(*http.Request)) *
 func TestGitHubLogin(t *testing.T) {
 	store := newFakeStore()
 	oauthBase, apiBase := startGitHubMocks(t, "acme", true)
-	h := newGitHubTestServer(store, oauthBase, apiBase, "acme", true)
+	h := newGitHubTestServer(store, oauthBase, apiBase, "acme")
 
 	rec := doGet(t, h, "/api/auth/github/login", nil)
 	if rec.Code != http.StatusFound {
@@ -345,7 +338,7 @@ func TestGitHubCallback(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			store := newFakeStore()
 			oauthBase, apiBase := startGitHubMocks(t, tt.org, tt.member)
-			h := newGitHubTestServer(store, oauthBase, apiBase, tt.org, tt.member)
+			h := newGitHubTestServer(store, oauthBase, apiBase, tt.org)
 
 			login := doGet(t, h, "/api/auth/github/login", nil)
 			stateCookie := findCookie(login, oauthStateCookie)
@@ -372,7 +365,7 @@ func TestGitHubCallback(t *testing.T) {
 func TestGitHubCallbackBadState(t *testing.T) {
 	store := newFakeStore()
 	oauthBase, apiBase := startGitHubMocks(t, "acme", true)
-	h := newGitHubTestServer(store, oauthBase, apiBase, "acme", true)
+	h := newGitHubTestServer(store, oauthBase, apiBase, "acme")
 
 	rec := doGet(t, h, "/api/auth/github/callback?code=x&state=wrong", func(req *http.Request) {
 		req.AddCookie(&http.Cookie{Name: oauthStateCookie, Value: "expected"})

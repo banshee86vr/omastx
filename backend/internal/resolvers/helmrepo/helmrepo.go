@@ -268,7 +268,7 @@ func (f *httpFetcher) Fetch(ctx context.Context, repoURL, chartName string) ([]s
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if registryauth.IsUnauthorizedHTTP(resp.StatusCode) {
 		return nil, registryauth.NewAuthRequired("helm", repoURL,
 			fmt.Sprintf("Chart repository %s requires credentials. Add Helm repo credentials for this cluster.", repoURL))

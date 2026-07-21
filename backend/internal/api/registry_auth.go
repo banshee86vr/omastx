@@ -197,23 +197,23 @@ func validateRegistryAuthRequest(req putRegistryAuthRequest) error {
 	switch req.Method {
 	case "pull_secret":
 		if req.SecretName == nil || strings.TrimSpace(*req.SecretName) == "" {
-			return errors.New("secret_name is required for pull_secret method.")
+			return errors.New("secret_name is required for pull_secret method")
 		}
 		if req.SecretNamespace == nil || strings.TrimSpace(*req.SecretNamespace) == "" {
-			return errors.New("secret_namespace is required for pull_secret method.")
+			return errors.New("secret_namespace is required for pull_secret method")
 		}
 		if req.SecretUsernameKey == nil || strings.TrimSpace(*req.SecretUsernameKey) == "" {
-			return errors.New("secret_username_key is required for pull_secret method.")
+			return errors.New("secret_username_key is required for pull_secret method")
 		}
 		if req.SecretPasswordKey == nil || strings.TrimSpace(*req.SecretPasswordKey) == "" {
-			return errors.New("secret_password_key is required for pull_secret method.")
+			return errors.New("secret_password_key is required for pull_secret method")
 		}
 	case "basic":
 		if req.Kind != "helm" {
-			return errors.New("basic auth is supported for Helm chart repositories only.")
+			return errors.New("basic auth is supported for Helm chart repositories only")
 		}
 		if req.Password == nil || *req.Password == "" {
-			return errors.New("password is required for basic auth.")
+			return errors.New("password is required for basic auth")
 		}
 	}
 	return nil

@@ -221,7 +221,7 @@ func (c *httpClient) Search(ctx context.Context, chartName string) ([]match.Pack
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GET %s: %s", u, resp.Status)
 	}
@@ -261,7 +261,7 @@ func (c *httpClient) Versions(ctx context.Context, repoName, pkgName string) ([]
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, nil
 	}

@@ -26,7 +26,7 @@ func decodeRelease(data string) (*rspb.Release, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer r.Close()
+		defer func() { _ = r.Close() }()
 		b2, err := io.ReadAll(r)
 		if err != nil {
 			return nil, err
@@ -54,6 +54,8 @@ func encodeRelease(rls *rspb.Release) (string, error) {
 	if _, err = w.Write(b); err != nil {
 		return "", err
 	}
-	w.Close()
+	if err := w.Close(); err != nil {
+		return "", err
+	}
 	return b64.EncodeToString(buf.Bytes()), nil
 }

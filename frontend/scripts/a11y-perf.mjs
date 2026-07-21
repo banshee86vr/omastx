@@ -76,8 +76,9 @@ async function signIn(page) {
 
 async function run() {
   checkContrast();
-  const browser = await chromium.launch();
-  const page = await browser.newPage();
+	const browser = await chromium.launch();
+  const context = await browser.newContext();
+  const page = await context.newPage();
   await signIn(page);
 
   const t0 = Date.now();
