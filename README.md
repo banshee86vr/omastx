@@ -5,7 +5,7 @@ is *running* in your Kubernetes clusters against what is *latest* upstream, and 
 gap as a navigable chart. Read-only by design: connect clusters with read-only
 kubeconfigs; Omastx never mutates anything.
 
-![prod-eu cluster drift - namespace lanes, breakdown, and recent scans](docs/screenshots/article/02-cluster-prod-eu-drift.png)
+![Omastx architecture: React frontend, Go backend, PostgreSQL, read-only Kubernetes clusters, and upstream sources](docs/screenshots/article/10-architecture.jpg)
 
 ## Local quickstart (docker compose)
 
@@ -17,6 +17,7 @@ make dev   # or: docker compose -f deploy/docker-compose.yml up --build
 ```
 
 Open http://localhost:8080 - you are signed in automatically (no credentials or `.env` file needed).
+![prod-eu cluster drift - namespace lanes, breakdown, and recent scans](docs/screenshots/article/02-cluster-prod-eu-drift.png)
 
 ## Native dev (recommended for daily work)
 
