@@ -2,8 +2,8 @@ name: CI
 
 on:
   pull_request:
-  push:
-    branches: [main]
+  # Called by release.yml so images/charts publish only after all checks pass.
+  workflow_call:
 
 jobs:
   backend:

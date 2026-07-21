@@ -244,3 +244,11 @@ for local compose/CI; production requires `OMASTX_GITHUB_CLIENT_ID`,
 Supersedes the local-auth portions of SPEC §1.4/§2.5/§2.6/§5.2 and the user-management
 parts of D3/D18; the `sessions` table additive deviation in D3 remains for session state.
 
+## D20: Release gated on green CI (2026-07-21)
+
+`release.yml` no longer builds/pushes GHCR images in parallel with CI. It calls
+`ci.yml` via `workflow_call` first (`needs: ci`); image push and Helm chart packaging
+run only when every CI job (backend, frontend, a11y, helm, docker) succeeds. CI still
+runs standalone on pull requests. Main/tag pushes go through Release → CI → publish.
+Extends D5.
+
