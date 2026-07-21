@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// RFC 7807-style problem body — every backend failure has this shape (SPEC §2.7).
+// RFC 7807-style problem body - every backend failure has this shape (SPEC §2.7).
 export const problemSchema = z.object({
   code: z.string(),
   title: z.string(),
@@ -76,7 +76,7 @@ async function request<T>(
     try {
       problem = problemSchema.parse(await res.json());
     } catch {
-      // Non-problem body (proxy error, etc.) — keep the fallback copy.
+      // Non-problem body (proxy error, etc.) - keep the fallback copy.
     }
     throw new ApiError(res.status, problem);
   }

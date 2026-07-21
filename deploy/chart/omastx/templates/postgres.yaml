@@ -1,6 +1,6 @@
 {{- if .Values.postgres.internal.enabled }}
 # Test-install convenience only (values.yaml: postgres.internal). Single
-# instance, no replication, no backups — use an external database in production.
+# instance, no replication, no backups - use an external database in production.
 apiVersion: v1
 kind: Service
 metadata:

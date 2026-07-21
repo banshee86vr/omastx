@@ -46,8 +46,8 @@ trap cleanup EXIT INT TERM
 
 echo ""
 echo "Backend  → http://localhost:8484  (restarts on .go changes when air is installed)"
-echo "Frontend → http://localhost:5173  (Vite HMR, auto sign-in — no credentials needed)"
-echo "Press Ctrl+C to stop backend and frontend (Postgres keeps running — make dev-db-down to stop it)"
+echo "Frontend → http://localhost:5173  (Vite HMR, auto sign-in - no credentials needed)"
+echo "Press Ctrl+C to stop backend and frontend (Postgres keeps running - make dev-db-down to stop it)"
 echo ""
 
 (

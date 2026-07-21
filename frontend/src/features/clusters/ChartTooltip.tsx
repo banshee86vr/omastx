@@ -25,7 +25,7 @@ function tooltipClass(placement: TooltipPlacement, align: TooltipAlign): string 
   return s.tooltipBelowCenter ?? "";
 }
 
-/** Floating chart readout — positioned relative to the chart overlay. */
+/** Floating chart readout - positioned relative to the chart overlay. */
 export function ChartTooltip({
   x,
   y,

@@ -129,7 +129,7 @@ func (s *Server) handleFleetSummary(w http.ResponseWriter, r *http.Request) {
 				ClusterID:   row.ClusterID.String(),
 				ClusterName: row.ClusterName,
 				Reason:      "degraded",
-				Detail:      "Helm access is missing on this cluster — scanning images only.",
+				Detail:      "Helm access is missing on this cluster - scanning images only.",
 			})
 		}
 	}

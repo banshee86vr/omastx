@@ -176,7 +176,7 @@ func (r *Resolver) listWithAuth(ctx context.Context, a core.Artifact) ([]string,
 	auth, _ := prov.AuthForImage(ctx, a)
 	if auth == nil {
 		return nil, registryauth.NewAuthRequired("image", host,
-			fmt.Sprintf("Private registry %s requires credentials. The workload has no usable imagePullSecret — configure a pull secret for this cluster.", host))
+			fmt.Sprintf("Private registry %s requires credentials. The workload has no usable imagePullSecret - configure a pull secret for this cluster.", host))
 	}
 	tags, err = r.lister.List(ctx, a.Identity, auth)
 	if err != nil {

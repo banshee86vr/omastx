@@ -1,15 +1,15 @@
-/* Design tokens. Palette: dark grey + neon yellow accent (DECISIONS.md D7 — overrides
-   the SPEC §4.2 hues; token names, roles and all other §4 rules stay binding). */
+/* Design tokens. Palette: dark grey + neon yellow accent (overrides the SPEC §4.2
+   hues; token names, roles and all other §4 rules stay binding). */
 
 :root[data-theme="night"] {
-  --abyss: #141414; /* app background — deep grey, NOT pure black */
+  --abyss: #141414; /* app background - deep grey, NOT pure black */
   --sounding: #1d1d1d; /* raised surfaces: panels, drawers */
   --shoal: #272727; /* hover / selected rows */
-  --gridline: #383838; /* structural lines — visible, part of the aesthetic */
+  --gridline: #383838; /* structural lines - visible, part of the aesthetic */
   --foam: #ededed; /* primary text */
   --mist: #a0a0a0; /* secondary text */
   --beacon: #e3ff2f; /* THE accent: interaction, focus, links, brand. Neon yellow. */
-  /* Functional status colors — drift semantics only, never decoration: */
+  /* Functional status colors - drift semantics only, never decoration: */
   --current: #58c98e;
   --caution: #ffab24;
   --alarm: #ff5f5f;
@@ -18,7 +18,7 @@
   --on-beacon: #141414;
 }
 
-/* Daylight theme — derived from the same hues, not an inversion. The accent
+/* Daylight theme - derived from the same hues, not an inversion. The accent
    darkens to a chartreuse-olive so text/controls keep >= 4.5:1 on light grey. */
 :root[data-theme="day"] {
   --abyss: #f0f0f0;
@@ -36,7 +36,7 @@
 }
 
 :root {
-  /* Typography — SPEC §4.3 */
+  /* Typography - SPEC §4.3 */
   --font-display: "Bricolage Grotesque", sans-serif;
   --font-body: "Public Sans", sans-serif;
   --font-mono: "IBM Plex Mono", monospace;
@@ -51,7 +51,7 @@
   --leading-body: 1.5;
   --leading-display: 1.15;
 
-  /* Spacing scale — SPEC §4.4 */
+  /* Spacing scale - SPEC §4.4 */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -62,7 +62,7 @@
   /* Instrument, not friendly-SaaS pill */
   --radius: 2px;
 
-  /* Motion — SPEC §4.6 */
+  /* Motion - SPEC §4.6 */
   --ease-out: cubic-bezier(0.2, 0.8, 0.4, 1);
   --duration-hover: 140ms;
 }

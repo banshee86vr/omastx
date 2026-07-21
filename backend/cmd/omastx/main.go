@@ -83,7 +83,7 @@ func run(logger *slog.Logger, migrateOnly bool) error {
 	defer scheduler.Stop()
 
 	if cfg.DevMode {
-		logger.Warn("OMASTX_DEV is enabled — using dev defaults and passwordless sign-in; never set this in production")
+		logger.Warn("OMASTX_DEV is enabled - using dev defaults and passwordless sign-in; never set this in production")
 	}
 	apiServer := api.NewServer(queries, logger, api.Options{
 		SecureCookies:      cfg.SecureCookies,

@@ -1,5 +1,5 @@
 // Package crypto provides AES-256-GCM encryption for secrets at rest
-// (kubeconfigs, registry credentials — SPEC §2.6).
+// (kubeconfigs, registry credentials - SPEC §2.6).
 package crypto
 
 import (

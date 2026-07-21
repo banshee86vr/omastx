@@ -166,7 +166,7 @@ export function ClusterDetailPage() {
 
       {cluster.rbac && !cluster.rbac.helm_ok && (
         <div className={styles.notice} role="status">
-          This cluster runs in images-only mode — secrets access is missing, so Helm releases
+          This cluster runs in images-only mode - secrets access is missing, so Helm releases
           can&apos;t be read. Grant get/list on secrets and reconnect to enable chart data.
         </div>
       )}
@@ -278,11 +278,11 @@ export function ClusterDetailPage() {
                     <td>
                       <Tag tone={scanTone(s.status)}>{s.status}</Tag>
                     </td>
-                    <td>{s.stats ? s.stats.total : "—"}</td>
+                    <td>{s.stats ? s.stats.total : "-"}</td>
                     <td>
                       {s.stats
                         ? s.stats.patch + s.stats.minor + s.stats.major + s.stats.deprecated
-                        : "—"}
+                        : "-"}
                     </td>
                     <td className={styles.scanAction}>{done ? "View artifacts →" : ""}</td>
                   </tr>

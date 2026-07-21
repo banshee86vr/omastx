@@ -6,11 +6,11 @@ COMPOSE_FULL := docker compose -f deploy/docker-compose.yml
 
 .PHONY: dev dev-local dev-db dev-db-down dev-backend dev-frontend test lint build migrate sqlc docker-build helm-lint helm-template seed
 
-## dev: run the full stack in Docker (rebuilds images — use dev-local for day-to-day coding)
+## dev: run the full stack in Docker (rebuilds images - use dev-local for day-to-day coding)
 dev:
 	OMASTX_DEV=true $(COMPOSE_FULL) up --build
 
-## dev-local: Postgres in Docker + backend (air/go) + Vite on the host — no rebuild per change
+## dev-local: Postgres in Docker + backend (air/go) + Vite on the host - no rebuild per change
 dev-local:
 	@bash scripts/dev-local.sh
 

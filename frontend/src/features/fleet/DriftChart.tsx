@@ -104,7 +104,7 @@ export function DriftChart({
                             flexGrow: value,
                             background: resolveSliceFill(colors, key, opacity),
                           }}
-                          aria-label={`${lane.label} — ${label}: ${value} of ${lane.total} artifacts. View in ledger.`}
+                          aria-label={`${lane.label} - ${label}: ${value} of ${lane.total} artifacts. View in ledger.`}
                           onClick={() => onSelectClass(lane.key, key)}
                           onMouseEnter={(e) => showTooltip(lane.key, key, e.currentTarget)}
                           onMouseLeave={() => setActive(null)}
@@ -122,7 +122,7 @@ export function DriftChart({
                   <span className={styles.laneEmpty}>no completed scan yet</span>
                 )}
               </span>
-              <span className={styles.laneTotal}>{lane.total > 0 ? lane.total : "—"}</span>
+              <span className={styles.laneTotal}>{lane.total > 0 ? lane.total : "-"}</span>
             </li>
           );
         })}

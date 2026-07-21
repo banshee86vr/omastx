@@ -19,3 +19,7 @@ deploy/chart/*.tgz
 
 # OS / editor
 .DS_Store
+
+# Local session planning / product spec (not shipped)
+docs/plan/
+SPEC.md

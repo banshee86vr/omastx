@@ -282,7 +282,7 @@ func (m *Manager) discover(ctx context.Context, scanID uuid.UUID, client core.Cl
 			m.logger.Info("skipping helm provider", "cluster", client.Name(), "reason", "secrets access not granted")
 			m.hub.Publish(scanID, Event{
 				Phase:   PhaseDiscovering,
-				Message: "Helm discovery skipped — secrets access not granted (images-only mode)",
+				Message: "Helm discovery skipped - secrets access not granted (images-only mode)",
 			})
 			continue
 		}

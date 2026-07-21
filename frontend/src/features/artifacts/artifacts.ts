@@ -27,7 +27,7 @@ export function artifactQuery(id: string) {
 }
 
 // driftTone maps a drift class to the status color role (always paired with the
-// class label in the UI, never color alone — WCAG 1.4.1, SPEC §4.2).
+// class label in the UI, never color alone - WCAG 1.4.1, SPEC §4.2).
 export function driftTone(cls: DriftClass): TagTone {
   switch (cls) {
     case "current":

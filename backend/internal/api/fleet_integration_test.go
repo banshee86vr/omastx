@@ -142,7 +142,7 @@ func TestFleetSummaryIntegration(t *testing.T) {
 		t.Fatalf("update cluster b state: %v", err)
 	}
 
-	// Cluster C: connected, but its only scan failed — no completed scan, so it
+	// Cluster C: connected, but its only scan failed - no completed scan, so it
 	// contributes zero to the drift totals but must surface as a failure.
 	clusterC := createCluster("fleet-c", "prod-eu")
 	scanC, err := queries.CreateScan(ctx, clusterC)

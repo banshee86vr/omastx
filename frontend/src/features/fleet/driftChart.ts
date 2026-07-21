@@ -2,7 +2,7 @@ import type { Artifact, FleetClusterLane } from "../../lib/api.ts";
 import type { DriftSliceKey } from "../clusters/driftStats.ts";
 
 // One row of the Drift Chart: a cluster (fleet view) or a namespace (cluster
-// detail), with its artifact counts per drift class (D17 — stacked drift bars).
+// detail), with its artifact counts per drift class (D17 - stacked drift bars).
 export interface DriftLaneDatum {
   key: string;
   label: string;

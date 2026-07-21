@@ -1,27 +1,26 @@
 # Omastx
 
-"How far has my fleet drifted?" — a self-hosted web portal that continuously compares what
+"How far has my fleet drifted?" - a self-hosted web portal that continuously compares what
 is *running* in your Kubernetes clusters against what is *latest* upstream, and shows the
 gap as a navigable chart. Read-only by design: connect clusters with read-only
 kubeconfigs; Omastx never mutates anything.
 
-See [SPEC.md](SPEC.md) for the full product and engineering specification, and
-[docs/plan/PROGRESS.md](docs/plan/PROGRESS.md) for implementation status.
+![prod-eu cluster drift - namespace lanes, breakdown, and recent scans](docs/screenshots/article/02-cluster-prod-eu-drift.png)
 
 ## Local quickstart (docker compose)
 
-Requirements: Docker with the compose plugin. Rebuilds images on every `make dev` — best for
+Requirements: Docker with the compose plugin. Rebuilds images on every `make dev` - best for
 CI-like smoke tests, not day-to-day coding (see **Native dev** below).
 
 ```bash
 make dev   # or: docker compose -f deploy/docker-compose.yml up --build
 ```
 
-Open http://localhost:8080 — you are signed in automatically (no credentials or `.env` file needed).
+Open http://localhost:8080 - you are signed in automatically (no credentials or `.env` file needed).
 
 ## Native dev (recommended for daily work)
 
-Requirements: Go 1.26+, Node 20+, Docker (Postgres only — no backend/frontend containers).
+Requirements: Go 1.26+, Node 20+, Docker (Postgres only - no backend/frontend containers).
 
 One command starts Postgres, the API, and Vite with hot reload:
 
@@ -29,7 +28,7 @@ One command starts Postgres, the API, and Vite with hot reload:
 make dev-local
 ```
 
-Open http://localhost:5173 — Vite proxies `/api` to the backend on `:8484` and signs you in automatically.
+Open http://localhost:5173 - Vite proxies `/api` to the backend on `:8484` and signs you in automatically.
 
 Optional: install [Air](https://github.com/air-verse/air) for automatic Go reload on save
 (`go install github.com/air-verse/air@latest`). Without it, restart the backend manually
@@ -39,8 +38,8 @@ Split terminals instead of `make dev-local`:
 
 ```bash
 make dev-db          # Postgres only (once per session)
-make dev-backend     # terminal 1 — API on :8484
-make dev-frontend    # terminal 2 — UI on :5173
+make dev-backend     # terminal 1 - API on :8484
+make dev-frontend    # terminal 2 - UI on :5173
 make dev-db-down     # stop Postgres when done
 ```
 
@@ -56,7 +55,7 @@ cd backend && go test ./internal/api/ -count=1
 
 ## Local development (manual env)
 
-Same as native dev without Make — useful if you prefer explicit exports:
+Same as native dev without Make - useful if you prefer explicit exports:
 
 ```bash
 export OMASTX_DEV=true
@@ -103,7 +102,7 @@ helm install omastx deploy/chart/omastx \
 backend/    Go service: API + scanner + resolvers
 frontend/   React 18 + TypeScript + Vite SPA
 deploy/     docker-compose, Dockerfiles, Helm chart
-docs/       spec support docs, implementation plan (docs/plan)
+docs/       spec support docs, screenshots
 ```
 
 ## Make targets

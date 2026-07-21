@@ -199,7 +199,7 @@ export function ConnectClusterPage() {
         >
           {fileName ? (
             <>
-              Loaded <span className={styles.fileName}>{fileName}</span> — drop another file to
+              Loaded <span className={styles.fileName}>{fileName}</span> - drop another file to
               replace it
             </>
           ) : (

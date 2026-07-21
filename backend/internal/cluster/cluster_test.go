@@ -146,7 +146,7 @@ func TestRunRBACSelfCheck(t *testing.T) {
 			}
 			for _, p := range report.Permissions {
 				if p.Verb != "get" && p.Verb != "list" {
-					t.Errorf("write verb %q requested — read-only is a hard requirement", p.Verb)
+					t.Errorf("write verb %q requested - read-only is a hard requirement", p.Verb)
 				}
 			}
 		})

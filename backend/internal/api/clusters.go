@@ -207,7 +207,7 @@ func (s *Server) handleCreateCluster(w http.ResponseWriter, r *http.Request) {
 }
 
 // reloadSchedules refreshes the scan scheduler after clusters change. Failures are
-// logged, not fatal — the next successful reload (or restart) picks up the change.
+// logged, not fatal - the next successful reload (or restart) picks up the change.
 func (s *Server) reloadSchedules(ctx context.Context) {
 	if s.scheduler == nil {
 		return

@@ -1,4 +1,4 @@
-# Postgres only — for native local dev (make dev-local / make dev-db).
+# Postgres only - for native local dev (make dev-local / make dev-db).
 # Backend and frontend run on the host with hot reload; no image rebuilds per change.
 name: omastx
 

@@ -1,6 +1,6 @@
 // Package core holds the extensibility contract shared by the scan orchestrator,
 // artifact providers, and version resolvers. Adding a new package kind (operators,
-// nodes, ...) means implementing ArtifactProvider / VersionResolver here — never
+// nodes, ...) means implementing ArtifactProvider / VersionResolver here - never
 // touching the orchestrator (SPEC §2.2, §8).
 package core
 

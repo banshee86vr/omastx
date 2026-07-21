@@ -1,45 +1,34 @@
 ---
-description: Omastx session workflow — spec is binding, progress is persisted across sessions
+description: Omastx session workflow - hard rules and post-implementation gate
 alwaysApply: true
 ---
 
 # Omastx workflow
 
-- `SPEC.md` is the single source of truth. Follow it exactly; where silent, prefer the
-  simplest implementation respecting the architecture, design system, and acceptance criteria.
-- At session start, read `docs/plan/PROGRESS.md`, the active milestone file
-  (`docs/plan/M*-*.md`), and `docs/plan/DECISIONS.md` before writing code.
-- Work milestones strictly in order (M1 → M6). Within a milestone, take the first
-  unchecked task unless marked parallelizable.
-- Check off milestone tasks only when verified (built/tested), not merely written.
-- Before ending a session: update `docs/plan/PROGRESS.md` (current state, milestone table,
-  session log row) and check off completed items in the milestone file.
-- Record any library pin, schema change, or deviation from SPEC as a new entry in
-  `docs/plan/DECISIONS.md`. Never rewrite accepted decisions; supersede them.
-- Hard rules from SPEC §8: no UI kit / Tailwind / prebuilt chart themes; never shell out
-  to `helm` or `kubectl`; never request Kubernetes write permissions; keep the §2.2
-  `ArtifactProvider` / `VersionResolver` interfaces exactly as specified.
+- Prefer the simplest implementation that respects the architecture, design system, and
+  acceptance criteria already embodied in the codebase and these rules.
+- Hard rules: no UI kit / Tailwind / prebuilt chart themes; never shell out to `helm` or
+  `kubectl`; never request Kubernetes write permissions; keep the
+  `ArtifactProvider` / `VersionResolver` interfaces stable so new package kinds can be
+  added without touching the scan orchestrator.
 - Delivery targets: local via `deploy/docker-compose.yml`; Kubernetes via the Helm chart
   in `deploy/chart/omastx`; images published to ghcr.io by GitHub Actions.
 
 ## Post-implementation gate (non-negotiable)
 
-After EVERY implementation (feature, fix, refactor — no exceptions), before considering
+After EVERY implementation (feature, fix, refactor - no exceptions), before considering
 the work done, run this three-part review and act on the findings:
 
 1. **Tests**: check whether the change warrants new or updated tests (unit, integration,
    table-driven fixtures). Write them. Every API mutation needs an integration test
-   against dockerized Postgres (SPEC §7); drift/tag-selection logic must stay ≥ 90%
-   coverage. If no test is warranted, state why explicitly.
-2. **Security**: review what was just built from a security point of view — secrets
+   against dockerized Postgres; drift/tag-selection logic must stay ≥ 90% coverage. If
+   no test is warranted, state why explicitly.
+2. **Security**: review what was just built from a security point of view - secrets
    handling (never logged, never returned, encrypted at rest), authn/authz on new
    endpoints, CSRF on mutations, input validation at boundaries, SQL injection surface,
    container/chart hardening (nonroot, read-only FS, no privilege escalation), and no
    new Kubernetes permissions beyond read-only.
 3. **Best practices**: check the change against development conventions (this rules
-   folder + SPEC §7), infrastructure practices (Dockerfiles, compose, Helm chart values,
-   probes, resource limits), and every integration touched (CI workflows, GHCR delivery,
-   registries, Postgres migrations — forward-only, never edit applied ones).
-
-Record the outcome of this gate (findings fixed, or "clean") in the session's wrap-up
-notes in `docs/plan/PROGRESS.md`.
+   folder), infrastructure practices (Dockerfiles, compose, Helm chart values, probes,
+   resource limits), and every integration touched (CI workflows, GHCR delivery,
+   registries, Postgres migrations - forward-only, never edit applied ones).

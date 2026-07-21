@@ -14,7 +14,7 @@ import (
 //go:embed seed.sql
 var seedSQL embed.FS
 
-// Fixed cluster IDs from seed.sql — used to make re-runs idempotent.
+// Fixed cluster IDs from seed.sql - used to make re-runs idempotent.
 var clusterIDs = []string{
 	"11111111-1111-1111-1111-111111111111",
 	"22222222-2222-2222-2222-222222222222",

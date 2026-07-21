@@ -268,7 +268,7 @@ export function ArtifactsPage() {
                     className={[styles.latest, styles.cellMono].join(" ")}
                     title={a.latest ?? undefined}
                   >
-                    {a.latest ?? "—"}
+                    {a.latest ?? "-"}
                   </td>
                   <td className={styles.cellTag}>
                     <Tag tone={driftTone(a.drift_class)}>{a.drift_class}</Tag>

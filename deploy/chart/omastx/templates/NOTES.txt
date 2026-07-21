@@ -14,6 +14,6 @@ then open http://localhost:8080 and sign in with the admin credentials from your
 
 {{- if .Values.postgres.internal.enabled }}
 
-NOTE: the bundled Postgres instance is for test installs only — single replica,
+NOTE: the bundled Postgres instance is for test installs only - single replica,
 no backups. Point DATABASE_URL at a managed database for production.
 {{- end }}

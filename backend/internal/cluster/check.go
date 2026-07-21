@@ -38,7 +38,7 @@ type CheckResult struct {
 	RBAC      RBACReport `json:"rbac"`
 }
 
-// checkedResources is EXACTLY the read-only set from SPEC §2.6 — get/list on
+// checkedResources is EXACTLY the read-only set from SPEC §2.6 - get/list on
 // workload kinds plus secrets (Helm 3 releases). Never add write verbs.
 var checkedResources = []struct {
 	group    string

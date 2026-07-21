@@ -8,7 +8,7 @@ export const fleetSummaryQuery = queryOptions({
 });
 
 // Bounds how many artifacts the cluster-detail Drift Chart fetches for its
-// namespace lane grouping — enough for a realistic cluster, cheap enough to
+// namespace lane grouping - enough for a realistic cluster, cheap enough to
 // keep first paint under the SPEC §4.7 budget (<2s). The fleet chart needs no
 // artifact fetch at all: its lanes come straight from the summary (D17).
 const CHART_ARTIFACT_CAP = 500;

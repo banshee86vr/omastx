@@ -15,7 +15,7 @@ alwaysApply: false
 - Kubeconfigs: AES-256-GCM encrypted at rest (key = `OMASTX_MASTER_KEY`), never returned
   by any API after upload, never logged.
 - Queries live in `internal/store/queries/*.sql`; regenerate with `make sqlc` and commit
-  the generated code under `internal/store/db/`. Schema changes are new goose migrations —
+  the generated code under `internal/store/db/`. Schema changes are new goose migrations -
   never edit an applied migration.
 - Errors: RFC 7807-style problem JSON `{code, title, detail}`; detail must state cause +
   next step per SPEC §4.6.

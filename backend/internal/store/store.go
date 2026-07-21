@@ -16,7 +16,7 @@ import (
 var migrationsFS embed.FS
 
 // Migrate applies all pending migrations. Called at startup so that local
-// compose and Kubernetes deployments behave identically (DECISIONS.md D1).
+// compose and Kubernetes deployments behave identically.
 func Migrate(databaseURL string) error {
 	sqlDB, err := goose.OpenDBWithDriver("pgx", databaseURL)
 	if err != nil {

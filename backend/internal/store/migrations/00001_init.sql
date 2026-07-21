@@ -11,8 +11,8 @@ CREATE TABLE users (
     created_at    timestamptz NOT NULL DEFAULT now()
 );
 
--- Additive to SPEC (see docs/plan/DECISIONS.md D3): server-side state for cookie
--- session auth required by §2.6. token_hash is sha256(session token), hex-encoded.
+-- Additive to SPEC: server-side state for cookie session auth required by §2.6.
+-- token_hash is sha256(session token), hex-encoded.
 CREATE TABLE sessions (
     token_hash text PRIMARY KEY,
     user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,

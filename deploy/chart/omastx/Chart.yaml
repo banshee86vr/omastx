@@ -1,7 +1,7 @@
 apiVersion: v2
 name: omastx
 description: >-
-  Omastx — a self-hosted portal that charts how far the versioned artifacts in your
+  Omastx - a self-hosted portal that charts how far the versioned artifacts in your
   Kubernetes clusters have drifted from latest. Read-only by design.
 type: application
 version: 0.1.0

@@ -8,7 +8,7 @@ interface SheetProps {
   children: ReactNode;
 }
 
-/** Right-side slide-over drawer — navigation never loses the chart underneath (SPEC §4.4). */
+/** Right-side slide-over drawer - navigation never loses the chart underneath (SPEC §4.4). */
 export function Sheet({ title, open, onClose, children }: SheetProps) {
   useEffect(() => {
     if (!open) return;

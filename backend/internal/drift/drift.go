@@ -57,7 +57,7 @@ func Parse(tag string) (v *semver.Version, ch Channel, ok bool) {
 		if err != nil {
 			return nil, Channel{}, false
 		}
-		// semver.NewVersion accepts bare "20240115" as 20240115.0.0 — reject
+		// semver.NewVersion accepts bare "20240115" as 20240115.0.0 - reject
 		// obvious date-only / single-number tags so they stay "unknown".
 		if !strings.Contains(t, ".") {
 			return nil, Channel{}, false
@@ -82,7 +82,7 @@ func family(pre string) string {
 
 // Compute classifies installed→latest into a drift class and score (SPEC §2.3).
 // drift_score = Δmajor*10000 + Δminor*100 + Δpatch. Non-semver on either side, or
-// a latest that is not ahead, yields current/unknown accordingly — never a guess.
+// a latest that is not ahead, yields current/unknown accordingly - never a guess.
 func Compute(installed, latest string) (Class, float64) {
 	iv, _, iok := Parse(installed)
 	if !iok {

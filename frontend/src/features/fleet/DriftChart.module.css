@@ -109,7 +109,7 @@
   text-align: right;
 }
 
-/* Sonar pulse over the lane being scanned — opacity only, one per SSE event. */
+/* Sonar pulse over the lane being scanned - opacity only, one per SSE event. */
 @keyframes sonarPulse {
   0% {
     opacity: 0;

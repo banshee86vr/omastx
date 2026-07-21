@@ -14,7 +14,7 @@ import (
 )
 
 // AccessibleSecret is a Kubernetes secret the connected identity can read.
-// Only metadata and data key names are returned — never secret values (SPEC §2.6).
+// Only metadata and data key names are returned - never secret values (SPEC §2.6).
 // Registries lists hostnames from dockerconfig auths keys when present.
 type AccessibleSecret struct {
 	Namespace  string   `json:"namespace"`
