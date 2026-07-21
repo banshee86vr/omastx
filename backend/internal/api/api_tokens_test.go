@@ -50,11 +50,10 @@ func seedSession(store *fakeStore, login string) (cookie *http.Cookie, csrf stri
 	return &http.Cookie{Name: sessionCookie, Value: token}, csrf
 }
 
-func seedAPIToken(store *fakeStore, scopes []string) (plaintext string, id uuid.UUID) {
+func seedAPIToken(store *fakeStore, scopes []string) string {
 	plaintext, prefix := newAPITokenPlaintext()
-	id = uuid.New()
 	store.apiTokens[hashToken(plaintext)] = db.ApiToken{
-		ID:          id,
+		ID:          uuid.New(),
 		Name:        "test",
 		TokenHash:   hashToken(plaintext),
 		TokenPrefix: prefix,
@@ -62,12 +61,12 @@ func seedAPIToken(store *fakeStore, scopes []string) (plaintext string, id uuid.
 		CreatedBy:   "alice",
 		CreatedAt:   pgtype.Timestamptz{Time: time.Now(), Valid: true},
 	}
-	return plaintext, id
+	return plaintext
 }
 
 func TestAPITokenBearerRead(t *testing.T) {
 	store := newFakeStore()
-	token, _ := seedAPIToken(store, []string{scopeRead})
+	token := seedAPIToken(store, []string{scopeRead})
 	h := newTestServer(store)
 
 	rec := doGet(t, h, "/api/fleet/summary", func(r *http.Request) {
@@ -80,7 +79,7 @@ func TestAPITokenBearerRead(t *testing.T) {
 
 func TestAPITokenMissingScope(t *testing.T) {
 	store := newFakeStore()
-	token, _ := seedAPIToken(store, []string{scopeRead})
+	token := seedAPIToken(store, []string{scopeRead})
 	clusterID := uuid.New()
 	store.clusters[clusterID] = db.GetClusterRow{
 		ID: clusterID, Name: "c1", ApiServerUrl: "https://k8s",
@@ -106,7 +105,7 @@ func TestAPITokenMissingScope(t *testing.T) {
 
 func TestAPITokenScanNoCSRF(t *testing.T) {
 	store := newFakeStore()
-	token, _ := seedAPIToken(store, []string{scopeScan})
+	token := seedAPIToken(store, []string{scopeScan})
 	clusterID := uuid.New()
 	store.clusters[clusterID] = db.GetClusterRow{
 		ID: clusterID, Name: "c1", ApiServerUrl: "https://k8s",
@@ -128,7 +127,7 @@ func TestAPITokenScanNoCSRF(t *testing.T) {
 
 func TestAPITokenDeniedSessionOnly(t *testing.T) {
 	store := newFakeStore()
-	token, _ := seedAPIToken(store, []string{scopeRead, scopeScan})
+	token := seedAPIToken(store, []string{scopeRead, scopeScan})
 	h := newTestServer(store)
 
 	rec := doJSON(t, h, http.MethodPost, "/api/clusters", `{"name":"x","kubeconfig":"y","context":"z"}`, func(r *http.Request) {
@@ -141,11 +140,10 @@ func TestAPITokenDeniedSessionOnly(t *testing.T) {
 
 func TestAPITokenRevokedRejected(t *testing.T) {
 	store := newFakeStore()
-	token, id := seedAPIToken(store, []string{scopeRead})
+	token := seedAPIToken(store, []string{scopeRead})
 	tok := store.apiTokens[hashToken(token)]
 	tok.RevokedAt = pgtype.Timestamptz{Time: time.Now(), Valid: true}
 	store.apiTokens[hashToken(token)] = tok
-	_ = id
 	h := newTestServer(store)
 
 	rec := doGet(t, h, "/api/fleet/summary", func(r *http.Request) {
@@ -235,7 +233,7 @@ func TestOpenAPIUnauthenticated(t *testing.T) {
 
 func TestSettingsTokenOmitsRegistryAuth(t *testing.T) {
 	store := newFakeStore()
-	token, _ := seedAPIToken(store, []string{scopeRead})
+	token := seedAPIToken(store, []string{scopeRead})
 	h := newTestServer(store)
 
 	rec := doGet(t, h, "/api/settings", func(r *http.Request) {
