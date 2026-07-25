@@ -1,0 +1,43 @@
+.matrix {
+  border: 1px solid var(--gridline);
+  border-radius: var(--radius);
+  overflow: hidden;
+  font-size: var(--text-sm);
+  flex: 1;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 7.5rem 7.5rem;
+  align-items: center;
+  border-bottom: 1px solid var(--gridline);
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.head {
+  color: var(--mist);
+  font-weight: 600;
+}
+
+.cell {
+  padding: var(--space-1) var(--space-3);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.resource {
+  color: var(--foam);
+}
+
+.allowed {
+  color: var(--current);
+}
+
+.denied {
+  color: var(--alarm);
+}

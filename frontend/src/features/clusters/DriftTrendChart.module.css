@@ -1,0 +1,105 @@
+.frame {
+  position: relative;
+  width: 100%;
+  flex: 1;
+  min-height: 220px;
+  border: 1px solid var(--gridline);
+  border-radius: var(--radius);
+  background: var(--sounding);
+  padding: var(--space-4);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+  z-index: 0;
+}
+
+.frame[data-tooltip-open="true"] {
+  z-index: 20;
+}
+
+.sizer {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  position: relative;
+  overflow: visible;
+}
+
+.sizer > div {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+
+.chartOverlay {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.svg {
+  display: block;
+  cursor: crosshair;
+}
+
+.hitTarget {
+  cursor: pointer;
+}
+
+.hitTarget:focus-visible {
+  outline: none;
+}
+
+.legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--mist);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.lineSwatch {
+  width: 1.25rem;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.dashed {
+  background: transparent !important;
+  border-top: 2px dashed;
+  height: 0;
+}
+
+.empty {
+  margin: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--mist);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

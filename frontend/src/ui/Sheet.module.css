@@ -1,0 +1,57 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--abyss) 65%, transparent);
+  z-index: 40;
+}
+
+.sheet {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(480px, 92vw);
+  background: var(--sounding);
+  border-left: 1px solid var(--gridline);
+  padding: var(--space-5);
+  overflow-y: auto;
+  z-index: 41;
+  animation: slide-in 150ms var(--ease-out);
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.title {
+  font-size: var(--text-lg);
+}
+
+.close {
+  background: none;
+  border: 1px solid var(--gridline);
+  border-radius: var(--radius);
+  color: var(--mist);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+.close:hover {
+  background: var(--shoal);
+  color: var(--foam);
+}

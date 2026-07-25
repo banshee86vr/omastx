@@ -1,0 +1,193 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+}
+
+.step {
+  border: 1px solid var(--gridline);
+  border-radius: var(--radius);
+  background: var(--sounding);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.stepTitle {
+  font-size: var(--text-lg);
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.stepNumber {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--beacon);
+}
+
+.hint {
+  color: var(--mist);
+  font-size: var(--text-sm);
+}
+
+.dropzone {
+  border: 1px dashed var(--gridline);
+  border-radius: var(--radius);
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+  color: var(--mist);
+  cursor: pointer;
+  transition:
+    border-color var(--duration-hover) var(--ease-out),
+    background var(--duration-hover) var(--ease-out);
+}
+
+.dropzone:hover,
+.dropzoneActive {
+  border-color: var(--beacon);
+  background: var(--shoal);
+  color: var(--foam);
+}
+
+.fileName {
+  font-family: var(--font-mono);
+  color: var(--beacon);
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--mist);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.divider::before,
+.divider::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--gridline);
+}
+
+.paste {
+  width: 100%;
+  min-height: 120px;
+  background: var(--abyss);
+  border: 1px solid var(--gridline);
+  border-radius: var(--radius);
+  color: var(--foam);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: var(--space-3);
+  resize: vertical;
+}
+
+.paste:focus {
+  border-color: var(--beacon);
+  outline: none;
+}
+
+.contextItem {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--gridline);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.contextItem:hover {
+  background: var(--shoal);
+}
+
+.contextChecked {
+  border-color: var(--beacon);
+}
+
+.contextName {
+  font-family: var(--font-mono);
+  color: var(--foam);
+}
+
+.contextServer {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--mist);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.contextList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.candidate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border-top: 1px solid var(--gridline);
+  padding-top: var(--space-4);
+}
+
+.candidateHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.candidateName {
+  font-family: var(--font-mono);
+}
+
+.notice {
+  border: 1px solid color-mix(in srgb, var(--caution) 45%, transparent);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--mist);
+}
+
+.problem {
+  border: 1px solid color-mix(in srgb, var(--alarm) 45%, transparent);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.problemTitle {
+  color: var(--alarm);
+  font-weight: 600;
+}
+
+.problemDetail {
+  color: var(--mist);
+  margin-top: var(--space-1);
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+@media (max-width: 720px) {
+  .fields {
+    grid-template-columns: 1fr;
+  }
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-3);
+}

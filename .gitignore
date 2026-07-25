@@ -1,0 +1,28 @@
+# Go
+backend/bin/
+backend/seed
+backend/tmp/
+backend/coverage.out
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+mcp/node_modules/
+mcp/dist/
+
+# Env & secrets (any directory; keep example templates tracked)
+.env
+.env*
+!.env.example
+!**/.env.example
+
+# Helm
+deploy/chart/*.tgz
+
+# OS / editor
+.DS_Store
+
+# Local session planning / product spec (not shipped)
+docs/plan/
+SPEC.md

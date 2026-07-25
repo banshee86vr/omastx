@@ -1,0 +1,62 @@
+.tooltipAboveStart,
+.tooltipAboveCenter,
+.tooltipAboveEnd,
+.tooltipBelowStart,
+.tooltipBelowCenter,
+.tooltipBelowEnd {
+  position: absolute;
+  z-index: 30;
+  pointer-events: none;
+  width: max-content;
+  max-width: min(20rem, 90vw);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--gridline);
+  border-radius: var(--radius);
+  background: var(--shoal);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.35);
+  font-size: var(--text-xs);
+  color: var(--foam);
+  font-family: var(--font-mono);
+  line-height: 1.45;
+}
+
+.tooltipAboveStart {
+  transform: translate(0, calc(-100% - var(--space-2)));
+}
+
+.tooltipAboveCenter {
+  transform: translate(-50%, calc(-100% - var(--space-2)));
+}
+
+.tooltipAboveEnd {
+  transform: translate(-100%, calc(-100% - var(--space-2)));
+}
+
+.tooltipBelowStart {
+  transform: translate(0, var(--space-2));
+}
+
+.tooltipBelowCenter {
+  transform: translate(-50%, var(--space-2));
+}
+
+.tooltipBelowEnd {
+  transform: translate(-100%, var(--space-2));
+}
+
+.tooltipAboveStart strong,
+.tooltipAboveCenter strong,
+.tooltipAboveEnd strong,
+.tooltipBelowStart strong,
+.tooltipBelowCenter strong,
+.tooltipBelowEnd strong {
+  display: block;
+  font-family: var(--font-body);
+  font-weight: 600;
+  color: var(--foam);
+  margin-bottom: 2px;
+}
+
+.tooltipMuted {
+  color: var(--mist);
+}

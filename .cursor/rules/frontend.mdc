@@ -1,0 +1,26 @@
+---
+description: Frontend conventions from SPEC §3 and the Night Passage design system §4
+globs: frontend/**
+alwaysApply: false
+---
+
+# Frontend (React + TS)
+
+- Stack is fixed (SPEC §3): React 18, TypeScript strict, Vite, @tanstack/react-query,
+  @tanstack/react-router, visx for charts, @fontsource self-hosted fonts.
+- NO component library (no MUI/AntD/shadcn) and NO Tailwind. `src/ui/*` primitives styled
+  with CSS Modules + the tokens in `src/styles/tokens.css` ARE the design system.
+- Every API response is parsed with zod in `src/lib/` before use.
+- Design system §4 is binding: single interactive accent `--beacon`; status colors only
+  for drift semantics and always paired with a label or shape (WCAG 1.4.1); 2px
+  border-radius; spacing scale 4/8/12/16/24/40; visible gridlines are part of the look.
+- Typography: Bricolage Grotesque (display, sparingly), Public Sans (body),
+  IBM Plex Mono (versions, namespaces, image refs, table numerics).
+- Motion: 120–160ms ease-out for hover/open; the sonar sweep is the only orchestrated
+  animation (≤1200ms, opacity-only); respect `prefers-reduced-motion`.
+- Microcopy per §4.6: plain verbs, sentence case; errors say cause + next step; empty
+  states invite action. No lorem ipsum.
+- Quality floor §4.7: responsive to 360px, `--beacon` focus rings on every interactive
+  element, full keyboard navigation, WCAG 2.2 AA, text contrast ≥ 4.5:1.
+- Banned looks (§4): default admin template, cream+serif+terracotta, black+acid-green,
+  broadsheet hairlines, generic SaaS gradients/pills/KPI cards.

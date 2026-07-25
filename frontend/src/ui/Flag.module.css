@@ -1,0 +1,27 @@
+.flag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  color: var(--mist);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 1px; /* square-ish: instrument, not pill */
+  background: var(--fathom);
+}
+
+.current .dot {
+  background: var(--current);
+}
+
+.caution .dot {
+  background: var(--caution);
+}
+
+.alarm .dot {
+  background: var(--alarm);
+}

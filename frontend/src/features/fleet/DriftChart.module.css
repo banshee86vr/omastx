@@ -1,0 +1,220 @@
+.frame {
+  position: relative;
+  width: 100%;
+  border: 1px solid var(--gridline);
+  border-radius: var(--radius);
+  background: var(--sounding);
+  padding: var(--space-4);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.lanes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.lane {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr) 2.5rem;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.laneLabel {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--foam);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+}
+
+.laneTrack {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 1.5rem;
+  background: var(--abyss);
+  border: 1px solid var(--gridline);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.laneBar {
+  display: flex;
+  height: 100%;
+  min-width: 2rem;
+}
+
+.segment {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-basis: 0;
+  min-width: 1.125rem;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-right: 1px solid var(--abyss);
+  background: transparent;
+  cursor: pointer;
+  overflow: hidden;
+  transition: filter var(--duration-hover) var(--ease-out);
+}
+
+.segment:last-child {
+  border-right: none;
+}
+
+.segment:hover,
+.segmentActive {
+  filter: brightness(1.18);
+}
+
+.segment:focus-visible {
+  outline: 2px solid var(--beacon);
+  outline-offset: -2px;
+}
+
+.segmentCount {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1;
+  color: var(--abyss);
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.laneEmpty {
+  padding-inline: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--mist);
+}
+
+.laneTotal {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--mist);
+  text-align: right;
+}
+
+/* Sonar pulse over the lane being scanned - opacity only, one per SSE event. */
+@keyframes sonarPulse {
+  0% {
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.28;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.sweep {
+  position: absolute;
+  inset: 0;
+  background: var(--beacon);
+  opacity: 0;
+  animation: sonarPulse 1100ms var(--ease-out) 1;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.footerHeading {
+  font-size: var(--text-xs);
+  color: var(--mist);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-family: var(--font-mono);
+}
+
+.legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--mist);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.legendSwatch {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.empty {
+  margin: 0;
+  padding: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--mist);
+  border: 1px solid var(--gridline);
+  border-radius: var(--radius);
+  background: var(--sounding);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 720px) {
+  .lane {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
+  }
+
+  .laneLabel {
+    text-align: left;
+  }
+
+  .laneTotal {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .segment {
+    transition: none;
+  }
+
+  .sweep {
+    animation: none;
+  }
+}

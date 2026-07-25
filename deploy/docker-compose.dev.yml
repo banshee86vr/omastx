@@ -1,0 +1,23 @@
+# Postgres only - for native local dev (make dev-local / make dev-db).
+# Backend and frontend run on the host with hot reload; no image rebuilds per change.
+name: omastx
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: omastx
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-omastx}
+      POSTGRES_DB: omastx
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U omastx -d omastx"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

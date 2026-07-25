@@ -1,0 +1,121 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "omastx.backend.fullname" . }}
+  labels:
+    {{- include "omastx.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "omastx.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        {{- include "omastx.labels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backend
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: 8484
+          env:
+            - name: OMASTX_LISTEN_ADDR
+              value: ":8484"
+            - name: OMASTX_SECURE_COOKIES
+              value: {{ .Values.ingress.tls.enabled | quote }}
+            {{- if .Values.postgres.internal.enabled }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "omastx.existingSecret" . }}
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: "postgres://{{ .Values.postgres.internal.user }}:$(POSTGRES_PASSWORD)@{{ include "omastx.postgres.fullname" . }}:5432/{{ .Values.postgres.internal.database }}?sslmode=disable"
+            {{- else }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "omastx.existingSecret" . }}
+                  key: DATABASE_URL
+            {{- end }}
+            - name: OMASTX_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "omastx.existingSecret" . }}
+                  key: OMASTX_MASTER_KEY
+            - name: OMASTX_GITHUB_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "omastx.existingSecret" . }}
+                  key: OMASTX_GITHUB_CLIENT_ID
+            - name: OMASTX_GITHUB_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "omastx.existingSecret" . }}
+                  key: OMASTX_GITHUB_CLIENT_SECRET
+            - name: OMASTX_GITHUB_ORG
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "omastx.existingSecret" . }}
+                  key: OMASTX_GITHUB_ORG
+            - name: OMASTX_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "omastx.existingSecret" . }}
+                  key: OMASTX_BASE_URL
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "omastx.backend.fullname" . }}
+  labels:
+    {{- include "omastx.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: {{ include "omastx.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: backend
+  ports:
+    - name: http
+      port: 8484
+      targetPort: http

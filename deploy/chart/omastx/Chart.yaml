@@ -1,0 +1,11 @@
+apiVersion: v2
+name: omastx
+description: >-
+  Omastx - a self-hosted portal that charts how far the versioned artifacts in your
+  Kubernetes clusters have drifted from latest. Read-only by design.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/banshee86vr/omastx
+sources:
+  - https://github.com/banshee86vr/omastx

@@ -1,0 +1,27 @@
+.meter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--text-xs);
+  color: var(--mist);
+  font-family: var(--font-mono);
+}
+
+.track {
+  height: 6px;
+  border-radius: var(--radius);
+  background: var(--shoal);
+  border: 1px solid var(--gridline);
+  overflow: hidden;
+}
+
+.fill {
+  height: 100%;
+  background: var(--beacon);
+  transition: width var(--duration-hover) var(--ease-out);
+}

@@ -1,0 +1,23 @@
+{
+  "name": "omastx-mcp",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "omastx-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.0"
+  }
+}

@@ -1,0 +1,26 @@
+---
+description: Go backend conventions from SPEC §2 and §7
+globs: backend/**
+alwaysApply: false
+---
+
+# Backend (Go)
+
+- Stack is fixed (SPEC §2.1): chi router, pgx + sqlc (no ORM), goose migrations
+  (embedded, run at startup), client-go, helm v3 libraries, go-containerregistry,
+  Masterminds/semver.
+- Decode Helm release Secrets with `helm.sh/helm/v3` libraries in memory; persist only
+  chart name/version/repo metadata. Never shell out to `helm` or `kubectl`.
+- Never request or use any Kubernetes write verb. Read-only by design.
+- Kubeconfigs: AES-256-GCM encrypted at rest (key = `OMASTX_MASTER_KEY`), never returned
+  by any API after upload, never logged.
+- Queries live in `internal/store/queries/*.sql`; regenerate with `make sqlc` and commit
+  the generated code under `internal/store/db/`. Schema changes are new goose migrations -
+  never edit an applied migration.
+- Errors: RFC 7807-style problem JSON `{code, title, detail}`; detail must state cause +
+  next step per SPEC §4.6.
+- API mutations require the CSRF token; sessions are HttpOnly `SameSite=Lax` cookies.
+- Tests are table-driven; drift engine and tag-selection logic must keep ≥ 90% coverage.
+  Every API mutation gets an integration test against dockerized Postgres.
+- Keep the `ArtifactProvider` / `VersionResolver` interfaces exactly as SPEC §2.2; new
+  package kinds must be addable without touching the scan orchestrator.

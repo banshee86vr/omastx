@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  pull_request:
+  # Called by release.yml so images/charts publish only after all checks pass.
+  workflow_call:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          working-directory: backend
+      - name: Test (unit + Postgres integration)
+        working-directory: backend
+        run: go test ./...
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - working-directory: frontend
+        run: npm ci
+      - working-directory: frontend
+        run: npm run lint
+      - working-directory: frontend
+        run: npm run build
+
+  a11y:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: omastx
+          POSTGRES_PASSWORD: omastx
+          POSTGRES_DB: omastx
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U omastx"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://omastx:omastx@localhost:5432/omastx?sslmode=disable
+      OMASTX_MASTER_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      OMASTX_DEV: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Seed database
+        run: |
+          cd backend && go run ./cmd/seed
+      - name: Start backend
+        run: |
+          cd backend && go run ./cmd/omastx &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8484/healthz && break
+            sleep 1
+          done
+      - name: Install frontend + Playwright
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install chromium --with-deps
+      - name: Start frontend preview
+        working-directory: frontend
+        run: |
+          npm run build
+          npm run preview -- --host 127.0.0.1 --port 5173 &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:5173/ && break
+            sleep 1
+          done
+      - name: Accessibility + perf checks
+        working-directory: frontend
+        env:
+          BASE_URL: http://127.0.0.1:5173
+        run: npm run a11y
+
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - run: helm lint deploy/chart/omastx --set existingSecret=omastx
+      - run: |
+          helm template omastx deploy/chart/omastx --set existingSecret=omastx >/dev/null
+          helm template omastx deploy/chart/omastx --set existingSecret=omastx \
+            --set postgres.internal.enabled=true \
+            --set ingress.enabled=true --set ingress.host=omastx.example.com >/dev/null
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build backend image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.backend
+          push: false
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+      - name: Build frontend image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.frontend
+          push: false
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max

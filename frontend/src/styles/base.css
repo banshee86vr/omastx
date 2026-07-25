@@ -1,0 +1,76 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+#root {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+body {
+  background: var(--abyss);
+  color: var(--foam);
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  line-height: var(--leading-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: var(--leading-display);
+}
+
+code,
+pre,
+.mono {
+  font-family: var(--font-mono);
+}
+
+a {
+  color: var(--beacon);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+button {
+  font: inherit;
+}
+
+/* Visible beacon focus ring on every interactive element - SPEC §4.7 */
+:focus-visible {
+  outline: 2px solid var(--beacon);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--beacon);
+  color: var(--on-beacon);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

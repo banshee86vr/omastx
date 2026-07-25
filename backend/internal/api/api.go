@@ -1,0 +1,219 @@
+// Package api exposes the HTTP surface: chi router, auth middleware, handlers.
+package api
+
+import (
+	"context"
+	"log/slog"
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/google/uuid"
+
+	"github.com/banshee86vr/omastx/backend/internal/cluster"
+	"github.com/banshee86vr/omastx/backend/internal/scan"
+	"github.com/banshee86vr/omastx/backend/internal/settings"
+	"github.com/banshee86vr/omastx/backend/internal/store/db"
+)
+
+// ClusterStore is the subset of store queries the cluster handlers need.
+type ClusterStore interface {
+	CreateCluster(ctx context.Context, arg db.CreateClusterParams) (db.CreateClusterRow, error)
+	ListClusters(ctx context.Context) ([]db.ListClustersRow, error)
+	GetCluster(ctx context.Context, id uuid.UUID) (db.GetClusterRow, error)
+	GetClusterConnection(ctx context.Context, id uuid.UUID) (db.GetClusterConnectionRow, error)
+	UpdateClusterSchedule(ctx context.Context, arg db.UpdateClusterScheduleParams) error
+	DeleteCluster(ctx context.Context, id uuid.UUID) (int64, error)
+}
+
+// ArtifactStore is the subset of store queries the scan/artifact handlers need.
+type ArtifactStore interface {
+	GetScan(ctx context.Context, id uuid.UUID) (db.Scan, error)
+	ListScansByCluster(ctx context.Context, arg db.ListScansByClusterParams) ([]db.Scan, error)
+	ListArtifacts(ctx context.Context, arg db.ListArtifactsParams) ([]db.ListArtifactsRow, error)
+	ListArtifactsForExport(ctx context.Context, arg db.ListArtifactsForExportParams) ([]db.ListArtifactsForExportRow, error)
+	CountObservationKindsForLatestScan(ctx context.Context, clusterID uuid.UUID) ([]db.CountObservationKindsForLatestScanRow, error)
+	CountAuthRequiredForLatestScan(ctx context.Context, clusterID uuid.UUID) (int32, error)
+	GetArtifact(ctx context.Context, id uuid.UUID) (db.GetArtifactRow, error)
+	ListObservationHistory(ctx context.Context, arg db.ListObservationHistoryParams) ([]db.ListObservationHistoryRow, error)
+	GetLatestCache(ctx context.Context, arg db.GetLatestCacheParams) (db.GetLatestCacheRow, error)
+	ListDriftRegistryTargets(ctx context.Context, clusterID uuid.UUID) ([]db.ListDriftRegistryTargetsRow, error)
+}
+
+// FleetStore is the subset of store queries the fleet summary handler needs.
+type FleetStore interface {
+	FleetLaneRollup(ctx context.Context) ([]db.FleetLaneRollupRow, error)
+	ListRecentFleetScans(ctx context.Context, limit int32) ([]db.ListRecentFleetScansRow, error)
+}
+
+// RegistryAuthStore persists cluster registry / Helm repo credentials.
+type RegistryAuthStore interface {
+	ListRegistryAuth(ctx context.Context, clusterID uuid.UUID) ([]db.ListRegistryAuthRow, error)
+	UpsertRegistryAuth(ctx context.Context, arg db.UpsertRegistryAuthParams) (uuid.UUID, error)
+	DeleteRegistryAuth(ctx context.Context, arg db.DeleteRegistryAuthParams) error
+}
+
+// Store is everything the API needs from the database; *db.Queries satisfies it.
+type Store interface {
+	AuthStore
+	APITokenStore
+	ClusterStore
+	ArtifactStore
+	RegistryAuthStore
+	FleetStore
+	SettingsStore
+}
+
+// Scanner triggers and streams scans. *scan.Manager satisfies it.
+type Scanner interface {
+	Start(ctx context.Context, clusterID uuid.UUID) (uuid.UUID, error)
+	Hub() *scan.Hub
+}
+
+// Scheduler is reloaded when the set of clusters changes.
+type Scheduler interface {
+	Reload(ctx context.Context) error
+}
+
+type Options struct {
+	SecureCookies bool
+	// MasterKey encrypts kubeconfigs at rest (32 bytes, SPEC §2.6).
+	MasterKey []byte
+	// DevMode enables passwordless POST /api/auth/dev-login (local dev only).
+	DevMode bool
+	// GitHub OAuth (required in production; optional when DevMode is true).
+	GitHubClientID     string
+	GitHubClientSecret string
+	GitHubOrg          string
+	BaseURL            string
+	// GitHubAPIBaseOverride / GitHubOAuthBaseOverride point OAuth at a mock server in tests.
+	GitHubAPIBaseOverride   string
+	GitHubOAuthBaseOverride string
+	// Connector performs cluster connectivity + RBAC checks.
+	Connector cluster.Connector
+	// Scanner runs scans; Scheduler re-reads schedules after cluster changes.
+	Scanner   Scanner
+	Scheduler Scheduler
+	// SettingsLoader supplies dynamic resolver TTLs; refreshed after settings mutations.
+	SettingsLoader *settings.Loader
+}
+
+type Server struct {
+	store         Store
+	logger        *slog.Logger
+	secureCookies bool
+	masterKey     []byte
+	devMode       bool
+	githubClientID     string
+	githubClientSecret string
+	githubOrg          string
+	baseURL            string
+	githubAPIBaseOverride   string
+	githubOAuthBaseOverride string
+	connector     cluster.Connector
+	scanner        Scanner
+	scheduler      Scheduler
+	settingsLoader *settings.Loader
+}
+
+func NewServer(store Store, logger *slog.Logger, opts Options) *Server {
+	return &Server{
+		store:         store,
+		logger:        logger,
+		secureCookies: opts.SecureCookies,
+		masterKey:     opts.MasterKey,
+		devMode:       opts.DevMode,
+		githubClientID:     opts.GitHubClientID,
+		githubClientSecret: opts.GitHubClientSecret,
+		githubOrg:          opts.GitHubOrg,
+		baseURL:            opts.BaseURL,
+		githubAPIBaseOverride:   opts.GitHubAPIBaseOverride,
+		githubOAuthBaseOverride: opts.GitHubOAuthBaseOverride,
+		connector:     opts.Connector,
+		scanner:        opts.Scanner,
+		scheduler:      opts.Scheduler,
+		settingsLoader: opts.SettingsLoader,
+	}
+}
+
+func (s *Server) Router() http.Handler {
+	r := chi.NewRouter()
+	r.Use(middleware.RequestID)
+	// Deliberately NOT using middleware.RealIP: it trusts X-Forwarded-For /
+	// X-Real-IP, which an attacker could spoof to evade the per-IP login rate
+	// limit (GHSA-9g5q-2w5x-hmxf). We use the real TCP peer via r.RemoteAddr.
+	r.Use(middleware.Recoverer)
+
+	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
+	r.Route("/api", func(r chi.Router) {
+		r.Get("/openapi.yaml", s.handleOpenAPIYAML)
+		r.Get("/openapi.json", s.handleOpenAPIJSON)
+
+		r.Get("/auth/github/login", s.handleGitHubLogin)
+		r.Get("/auth/github/callback", s.handleGitHubCallback)
+		if s.devMode {
+			r.Post("/auth/dev-login", s.handleDevLogin)
+		}
+
+		r.Group(func(r chi.Router) {
+			r.Use(s.requireAuth, s.requireCSRF)
+
+			r.With(s.requireSession).Get("/auth/me", s.handleMe)
+			r.With(s.requireSession).Post("/auth/logout", s.handleLogout)
+
+			r.With(s.requireScopes(scopeRead)).Get("/fleet/summary", s.handleFleetSummary)
+			r.With(s.requireScopes(scopeRead)).Get("/export", s.handleExport)
+
+			r.With(s.requireScopes(scopeRead)).Get("/settings", s.handleGetSettings)
+			r.With(s.requireSession).Put("/settings", s.handlePutSettings)
+			r.With(s.requireSession).Get("/settings/registry-auth", s.handleListGlobalRegistryAuth)
+			r.With(s.requireSession).Put("/settings/registry-auth", s.handlePutGlobalRegistryAuth)
+			r.With(s.requireSession).Delete("/settings/registry-auth/{target}", s.handleDeleteGlobalRegistryAuth)
+			r.With(s.requireSession).Get("/settings/api-tokens", s.handleListAPITokens)
+			r.With(s.requireSession).Post("/settings/api-tokens", s.handleCreateAPIToken)
+			r.With(s.requireSession).Delete("/settings/api-tokens/{id}", s.handleRevokeAPIToken)
+
+			r.Route("/clusters", func(r chi.Router) {
+				r.With(s.requireScopes(scopeRead)).Get("/", s.handleListClusters)
+				r.With(s.requireSession).Post("/", s.handleCreateCluster)
+				r.With(s.requireSession).Post("/inspect", s.handleInspectKubeconfig)
+				r.With(s.requireSession).Post("/check", s.handleCheckCluster)
+				r.With(s.requireScopes(scopeRead)).Get("/{id}", s.handleGetCluster)
+				r.With(s.requireSession).Put("/{id}/schedule", s.handleUpdateClusterSchedule)
+				r.With(s.requireScopes(scopeRead)).Get("/{id}/artifact-kinds", s.handleArtifactKindCounts)
+				r.With(s.requireSession).Delete("/{id}", s.handleDeleteCluster)
+				r.With(s.requireScopes(scopeScan)).Post("/{id}/scan", s.handleStartScan)
+				r.With(s.requireScopes(scopeRead)).Get("/{id}/scans", s.handleListScans)
+				r.With(s.requireScopes(scopeRead)).Get("/{id}/scans/{sid}/events", s.handleScanEvents)
+				r.With(s.requireSession).Get("/{id}/registry-auth", s.handleListRegistryAuth)
+				r.With(s.requireScopes(scopeRead)).Get("/{id}/registry-targets", s.handleListRegistryTargets)
+				r.With(s.requireSession).Get("/{id}/cluster-secrets", s.handleListPullSecrets)
+				r.With(s.requireSession).Put("/{id}/registry-auth", s.handlePutRegistryAuth)
+				r.With(s.requireSession).Delete("/{id}/registry-auth/{target}", s.handleDeleteRegistryAuth)
+			})
+
+			r.Route("/artifacts", func(r chi.Router) {
+				r.With(s.requireScopes(scopeRead)).Get("/", s.handleListArtifacts)
+				r.With(s.requireScopes(scopeRead)).Get("/{id}/history", s.handleGetArtifactHistory)
+				r.With(s.requireScopes(scopeRead)).Get("/{id}", s.handleGetArtifact)
+			})
+		})
+
+		r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
+			writeProblem(w, http.StatusNotFound, "not_found", "Not found",
+				"This API route doesn't exist. Check the path and try again.")
+		})
+	})
+
+	return r
+}
+
+func (s *Server) internalError(w http.ResponseWriter, err error) {
+	s.logger.Error("internal error", "error", err)
+	writeProblem(w, http.StatusInternalServerError, "internal", "Something went wrong",
+		"An unexpected error occurred on the server. Try again; if it persists, check the backend logs.")
+}

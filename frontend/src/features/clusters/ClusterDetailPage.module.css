@@ -1,0 +1,150 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  border: 1px solid var(--gridline);
+  border-radius: var(--radius);
+  background: var(--sounding);
+  padding: var(--space-4);
+  flex: 1;
+  box-sizing: border-box;
+}
+
+.infoRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: stretch;
+}
+
+.infoPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.chartsRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+  align-items: stretch;
+}
+
+@media (max-width: 1100px) {
+  .chartsRow {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .infoRow {
+    grid-template-columns: 1fr;
+  }
+}
+
+.chartPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  overflow: visible;
+}
+
+.chartPanel > :last-child {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.chartEmpty {
+  margin: 0;
+  padding: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--mist);
+  border: 1px solid var(--gridline);
+  border-radius: var(--radius);
+  background: var(--sounding);
+  flex: 1;
+}
+
+.metaLabel {
+  color: var(--mist);
+}
+
+.metaValue {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.sectionTitle {
+  font-size: var(--text-lg);
+}
+
+.scanMessage {
+  font-size: var(--text-sm);
+  color: var(--mist);
+  font-family: var(--font-mono);
+}
+
+.scanRow {
+  cursor: pointer;
+}
+
+.scanRow:focus-visible {
+  outline: 2px solid var(--beacon);
+  outline-offset: -2px;
+}
+
+.scanAction {
+  color: var(--beacon);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.notice {
+  border: 1px solid color-mix(in srgb, var(--caution) 45%, transparent);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--mist);
+}
+
+.danger {
+  border-top: 1px solid var(--gridline);
+  padding-top: var(--space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}

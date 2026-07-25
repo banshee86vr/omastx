@@ -1,0 +1,19 @@
+Omastx {{ .Chart.AppVersion }} installed as release {{ .Release.Name }}.
+
+{{- if .Values.ingress.enabled }}
+Open http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.host }} and
+sign in with the admin credentials from your "{{ .Values.existingSecret }}" Secret.
+{{- else }}
+No ingress is enabled. To reach the UI locally:
+
+  kubectl port-forward svc/{{ include "omastx.frontend.fullname" . }} 8080:{{ .Values.service.port }}
+
+then open http://localhost:8080 and sign in with the admin credentials from your
+"{{ .Values.existingSecret }}" Secret.
+{{- end }}
+
+{{- if .Values.postgres.internal.enabled }}
+
+NOTE: the bundled Postgres instance is for test installs only - single replica,
+no backups. Point DATABASE_URL at a managed database for production.
+{{- end }}
