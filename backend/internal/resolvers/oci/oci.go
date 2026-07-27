@@ -18,6 +18,7 @@ import (
 
 	"github.com/banshee86vr/omastx/backend/internal/core"
 	"github.com/banshee86vr/omastx/backend/internal/drift"
+	"github.com/banshee86vr/omastx/backend/internal/netguard"
 	"github.com/banshee86vr/omastx/backend/internal/registryauth"
 )
 
@@ -236,12 +237,17 @@ func registryHost(identity string) string {
 
 type remoteLister struct{}
 
+// guardedTransport is shared so tag listings reuse one connection pool. The
+// registry host comes from an image reference read out of the cluster, so the
+// guard is what keeps a crafted reference from reaching the metadata service.
+var guardedTransport = netguard.Transport()
+
 func (remoteLister) List(ctx context.Context, repository string, auth authn.Authenticator) ([]string, error) {
 	repo, err := name.NewRepository(repository, name.WeakValidation)
 	if err != nil {
 		return nil, err
 	}
-	opts := []remote.Option{remote.WithContext(ctx)}
+	opts := []remote.Option{remote.WithContext(ctx), remote.WithTransport(guardedTransport)}
 	if auth != nil {
 		opts = append(opts, remote.WithAuth(auth))
 	} else {

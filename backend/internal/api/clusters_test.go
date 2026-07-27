@@ -204,6 +204,63 @@ func TestCreateCluster(t *testing.T) {
 	}
 }
 
+// An uploaded kubeconfig whose credentials come from an exec plugin would make
+// the backend run the uploader's command; the whole HTTP path must refuse it with
+// the real connector, and never store it.
+func TestClusterEndpointsRefuseCredentialPlugins(t *testing.T) {
+	execKubeconfig, _ := json.Marshal(`apiVersion: v1
+kind: Config
+current-context: evil
+clusters:
+- name: evil-cluster
+  cluster:
+    server: https://evil.example.com:6443
+contexts:
+- name: evil
+  context: {cluster: evil-cluster, user: evil-user}
+users:
+- name: evil-user
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      command: /bin/sh
+      interactiveMode: Never
+      args: ["-c", "id"]
+`)
+	store := newFakeStore()
+	h := newTestServerWithConnector(store, &cluster.KubeConnector{Timeout: 5 * time.Second})
+	authed := signIn(t, h, store)
+
+	// Inspect still lists the context, flagged so the UI can explain it.
+	rec := doJSON(t, h, http.MethodPost, "/api/clusters/inspect",
+		fmt.Sprintf(`{"kubeconfig":%s}`, execKubeconfig), authed)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("inspect status = %d, want 200 (%s)", rec.Code, rec.Body)
+	}
+	var inspected struct {
+		Contexts []cluster.ContextInfo `json:"contexts"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &inspected); err != nil {
+		t.Fatal(err)
+	}
+	if len(inspected.Contexts) != 1 || inspected.Contexts[0].Unsupported == "" {
+		t.Fatalf("exec context not flagged unsupported: %+v", inspected.Contexts)
+	}
+
+	for _, path := range []string{"/api/clusters/check", "/api/clusters"} {
+		body := fmt.Sprintf(`{"kubeconfig":%s,"name":"evil","context":"evil"}`, execKubeconfig)
+		rec := doJSON(t, h, http.MethodPost, path, body, authed)
+		if rec.Code != http.StatusUnprocessableEntity {
+			t.Errorf("%s status = %d, want 422 (%s)", path, rec.Code, rec.Body)
+			continue
+		}
+		assertProblemCode(t, rec, "invalid_kubeconfig")
+	}
+	if store.lastCreateCluster != nil {
+		t.Error("kubeconfig with an exec plugin must never be stored")
+	}
+}
+
 func TestCreateClusterNameConflict(t *testing.T) {
 	store := newFakeStore()
 	h := newTestServer(store)

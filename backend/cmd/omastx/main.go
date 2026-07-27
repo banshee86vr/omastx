@@ -14,6 +14,7 @@ import (
 	"github.com/banshee86vr/omastx/backend/internal/api"
 	"github.com/banshee86vr/omastx/backend/internal/cluster"
 	"github.com/banshee86vr/omastx/backend/internal/config"
+	"github.com/banshee86vr/omastx/backend/internal/netguard"
 	"github.com/banshee86vr/omastx/backend/internal/registryauth"
 	"github.com/banshee86vr/omastx/backend/internal/scan"
 	"github.com/banshee86vr/omastx/backend/internal/seed"
@@ -38,6 +39,10 @@ func run(logger *slog.Logger, migrateOnly bool) error {
 	if err != nil {
 		return err
 	}
+
+	// Only local development points Omastx at a cluster on localhost; in
+	// production loopback is a target no scan should ever reach.
+	netguard.AllowLoopback(cfg.DevMode)
 
 	if err := store.Migrate(cfg.DatabaseURL); err != nil {
 		return err

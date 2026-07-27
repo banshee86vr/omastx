@@ -96,6 +96,7 @@
 
 .contextItem {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
@@ -106,6 +107,19 @@
 
 .contextItem:hover {
   background: var(--shoal);
+}
+
+.contextUnsupported,
+.contextUnsupported:hover {
+  border-style: dashed;
+  background: none;
+  cursor: not-allowed;
+}
+
+.contextNote {
+  flex-basis: 100%;
+  font-size: var(--text-xs);
+  color: var(--mist);
 }
 
 .contextChecked {
