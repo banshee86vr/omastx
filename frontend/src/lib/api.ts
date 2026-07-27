@@ -93,6 +93,9 @@ export const contextInfoSchema = z.object({
   server: z.string(),
   user: z.string(),
   current: z.boolean(),
+  // Set when the context's credentials can't be resolved server-side, in which
+  // case it can't be imported.
+  unsupported: z.string().optional(),
 });
 
 export const permissionSchema = z.object({

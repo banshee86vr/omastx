@@ -18,6 +18,7 @@ import (
 
 	"github.com/banshee86vr/omastx/backend/internal/core"
 	"github.com/banshee86vr/omastx/backend/internal/drift"
+	"github.com/banshee86vr/omastx/backend/internal/netguard"
 	"github.com/banshee86vr/omastx/backend/internal/registryauth"
 )
 
@@ -98,8 +99,12 @@ func WithRepos(urls ...string) Option {
 
 func New(cache Cache, opts ...Option) *Resolver {
 	r := &Resolver{
-		cache:    cache,
-		fetcher:  &httpFetcher{client: &http.Client{Timeout: 30 * time.Second}},
+		cache: cache,
+		// Repo URLs come from cluster data, so connections are guarded (SSRF).
+		fetcher: &httpFetcher{client: &http.Client{
+			Timeout:   30 * time.Second,
+			Transport: netguard.Transport(),
+		}},
 		ttl:      DefaultTTL,
 		limiters: newHostLimiters(5, 5),
 		repos:    DefaultRepos,

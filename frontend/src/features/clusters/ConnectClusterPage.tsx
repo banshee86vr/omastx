@@ -64,7 +64,9 @@ export function ConnectClusterPage() {
     try {
       const found = await api.inspectKubeconfig(config);
       setContexts(found);
-      setSelected(new Set(found.filter((c) => c.current).map((c) => c.name)));
+      setSelected(
+        new Set(found.filter((c) => c.current && !c.unsupported).map((c) => c.name)),
+      );
     } catch (err) {
       setInspectProblem(toProblem(err));
     }
@@ -78,6 +80,7 @@ export function ConnectClusterPage() {
   }
 
   function toggleContext(name: string) {
+    if (contexts?.find((c) => c.name === name)?.unsupported) return;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(name)) {
@@ -246,6 +249,13 @@ export function ConnectClusterPage() {
               ? "This kubeconfig has one context."
               : `This kubeconfig has ${contexts.length} contexts. Each selected context becomes its own cluster.`}
           </p>
+          {contexts.some((c) => c.unsupported) && (
+            <p className={styles.hint}>
+              Contexts whose credentials Omastx can't resolve are disabled. Re-export them
+              with the client certificate or bearer token embedded in the file to import
+              them.
+            </p>
+          )}
           <div className={styles.contextList}>
             {contexts.map((c) => (
               <label
@@ -253,11 +263,13 @@ export function ConnectClusterPage() {
                 className={[
                   styles.contextItem,
                   selected.has(c.name) ? styles.contextChecked : "",
+                  c.unsupported ? styles.contextUnsupported : "",
                 ].join(" ")}
               >
                 <input
                   type="checkbox"
                   checked={selected.has(c.name)}
+                  disabled={!!c.unsupported}
                   onChange={() => toggleContext(c.name)}
                 />
                 <span className={styles.contextName}>
@@ -265,6 +277,11 @@ export function ConnectClusterPage() {
                   {c.current ? " (current)" : ""}
                 </span>
                 <span className={styles.contextServer}>{c.server}</span>
+                {c.unsupported && (
+                  <span className={styles.contextNote}>
+                    Can't be imported: it {c.unsupported}.
+                  </span>
+                )}
               </label>
             ))}
           </div>
