@@ -55,7 +55,7 @@ postgres:
   # Test-install convenience only; use an external database in production.
   internal:
     enabled: false
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     database: omastx
     user: omastx
     storage: 5Gi

@@ -57,7 +57,7 @@ spec:
                   key: POSTGRES_PASSWORD
           volumeMounts:
             - name: data
-              mountPath: /var/lib/postgresql/data
+              mountPath: /var/lib/postgresql
           readinessProbe:
             exec:
               command: ["pg_isready", "-U", {{ .Values.postgres.internal.user | quote }}]
