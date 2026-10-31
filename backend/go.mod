@@ -4,7 +4,7 @@ go 1.27.2
 
 require (
 	github.com/Masterminds/semver/v3 v3.5.0
-	github.com/go-chi/chi/v5 v5.4.0
+	github.com/go-chi/chi/v5 v5.5.0
 	github.com/go-pdf/fpdf v0.9.0
 	github.com/google/go-containerregistry v0.22.1
 	github.com/google/uuid v1.6.0
@@ -13,8 +13,8 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 	golang.org/x/oauth2 v0.37.0
 	golang.org/x/time v0.16.0
-	helm.sh/helm/v3 v3.22.0
-	helm.sh/helm/v4 v4.3.0
+	helm.sh/helm/v3 v3.22.1
+	helm.sh/helm/v4 v4.3.1
 	k8s.io/api v0.37.1
 	k8s.io/apimachinery v0.37.1
 	k8s.io/client-go v0.37.1
