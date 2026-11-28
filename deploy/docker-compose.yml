@@ -2,7 +2,7 @@ name: omastx
 
 services:
   postgres:
-    image: postgres:18-alpine
+    image: postgres:19-alpine
     environment:
       POSTGRES_USER: omastx
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-omastx}
